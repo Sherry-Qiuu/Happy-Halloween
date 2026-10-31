@@ -1,4 +1,35 @@
 /* Home calendar drag/resize + local reschedule card. */
+.hai-composerrow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 9px;
+  flex-shrink: 0;
+}
+
+.hai-composerrow .composer {
+  flex: 1;
+  min-width: 0;
+  margin-top: 0;
+}
+
+.hai-composerrow .undo-btn {
+  flex: 0 0 auto;
+  min-height: 38px;
+  padding: 0 12px;
+  border: 1px solid #d9e5db;
+  border-radius: 20px;
+  background: #fff;
+  color: #4b6558;
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.hai-composerrow .undo-btn:hover {
+  border-color: #b9cdc0;
+  background: #f6faf7;
+}
+
 .hblock.rs-draggable {
   cursor: grab;
   touch-action: none;
