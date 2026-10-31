@@ -29,9 +29,11 @@ python server.py
 
 | 路径 | 说明 |
 | --- | --- |
-| `index.html` | 静态版入口；GitHub Pages 发布根目录这 6 个文件 |
+| `index.html` | 静态版入口；GitHub Pages 发布根目录下的 html / css / js |
 | `agent.js` / `agent.css` | AI 面板 |
 | `auth.js` / `auth.css` | 登录、账号、同步 |
+| `revision.css` … `unify.js` | V0.13 设计的 11 个增量层（首页 / 目标 / 反思 / 信息卡 / 侧栏 / 工作区） |
+| `warmgrid-skin.css` | 视觉皮肤：暖纸底、墨色主操作、薰衣草/青柠强调，只改样式不改布局 |
 | `xingjian-agent/` | Python 后端：账号、数据、画像规则、DeepSeek 代理、部署 |
 | `calendar-rescheduler/` | 日历重排前后端设计包：拖拽/对话 Demo + 画像重排策略 |
 

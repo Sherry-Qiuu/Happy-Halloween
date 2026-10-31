@@ -1,6 +1,1 @@
-/* examples.css - 示例内容层（演示用的示例数据与引导）
- *
- * 行间 V0.13 的增量样式层。基础样式仍在 index.html 的内联 <style> 里，
- * 这一层只做局部覆盖，加载顺序在 agent.css / auth.css 之前。
- * 目前是占位文件：不含任何规则，页面表现与纯内联版本一致。
- */
+.calendarviewport{min-height:0;overflow-y:auto;overflow-x:hidden;scrollbar-width:thin;position:relative}.daycanvas{height:700px;min-height:0}.dayhead{position:sticky;top:0;z-index:5;background:#fff}.dayhead.selected{background:#e7f0e9}.daycanvas>div:first-child{position:sticky;top:0;background:#fff;z-index:5}.examplebar{display:flex;align-items:center;gap:7px;margin:0 0 9px;flex-wrap:wrap}.examplebar span{font-size:11px;color:var(--muted)}.examplebar button{font-size:11px;min-height:28px;padding:3px 10px}.scopebadge{margin:13px 0 0;padding:6px 9px;border-radius:6px;background:#eaf1ec;font-size:12px}.projectboard .examplebar{margin-top:-7px;margin-bottom:9px}.ai{padding-top:12px;padding-bottom:12px}.ai .chips button{min-height:27px}.compactevent{font-size:11px;min-height:14px}.calendar .calcaption{font-size:11px}.threeframe{min-height:0}.history{overflow:auto}@media(max-width:800px){.calendar{height:650px;min-height:650px}.examplebar{gap:5px}.ai{min-height:270px}}

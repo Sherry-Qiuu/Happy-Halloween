@@ -1,6 +1,6 @@
 # Publish the static site to GitHub Pages.
 #
-# The site is the six files at the repository root. The Python service
+# The site is the html / css / js at the repository root. The Python service
 # (xingjian-agent/) is not part of the published site; it keeps running
 # on its own host.
 #
@@ -38,7 +38,7 @@ jobs:
         run: |
           set -eu
           mkdir -p _site
-          for file in index.html agent.js agent.css auth.js auth.css pages-bootstrap.js; do
+          for file in *.html *.css *.js; do
             cp "$file" _site/
           done
           : > _site/.nojekyll

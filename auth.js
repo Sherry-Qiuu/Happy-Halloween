@@ -38,6 +38,8 @@
 
   let currentUser = null;
   let authMode = 'login';
+  // The server decides at boot whether sign-up needs an email code.
+  let emailRequired = true;
   let localMode = false;
   let authBusy = false;
   let saveTimer = null;
@@ -322,6 +324,16 @@
     paintUser();
     setSync('loading');
 
+    try {
+      const health = await request('/api/health');
+      emailRequired =
+        health.email_required === undefined
+          ? true
+          : Boolean(health.email_required);
+    } catch (_error) {
+      emailRequired = true;
+    }
+
     const signed = new URLSearchParams(location.search).has('signed');
     try {
       const payload = await request(API.me);
@@ -541,8 +553,9 @@
     });
 
     if (authMode === 'register') {
-      lead.textContent =
-        '注册需要验证邮箱。验证码会发送到你的邮箱，6 位数字，10 分钟内有效。';
+      lead.textContent = emailRequired
+        ? '注册需要验证邮箱。验证码会发送到你的邮箱，6 位数字，10 分钟内有效。'
+        : '注册只需要用户名和密码，不需要邮箱验证。';
       form.innerHTML =
         '<label class="authfield"><span>用户名</span>' +
         '<input name="username" autocomplete="username" maxlength="32" ' +
@@ -550,15 +563,19 @@
         '<label class="authfield"><span>显示名称（可选）</span>' +
         '<input name="display_name" autocomplete="nickname" maxlength="40" ' +
         'placeholder="例如：小明"></label>' +
-        '<label class="authfield"><span>邮箱</span>' +
-        '<input name="email" type="email" autocomplete="email" maxlength="254" ' +
-        'placeholder="用于接收验证码，例如 name@example.com" required></label>' +
-        '<div class="authfield"><span>邮箱验证码</span>' +
-        '<div class="authcoderow">' +
-        '<input name="code" inputmode="numeric" autocomplete="one-time-code" ' +
-        'maxlength="6" placeholder="6 位数字" required>' +
-        '<button type="button" class="authsend" id="authSendCode">发送验证码</button>' +
-        '</div></div>' +
+        (emailRequired
+          ? '<label class="authfield"><span>邮箱</span>' +
+            '<input name="email" type="email" autocomplete="email" ' +
+            'maxlength="254" placeholder="用于接收验证码，例如 name@example.com" ' +
+            'required></label>' +
+            '<div class="authfield"><span>邮箱验证码</span>' +
+            '<div class="authcoderow">' +
+            '<input name="code" inputmode="numeric" autocomplete="one-time-code" ' +
+            'maxlength="6" placeholder="6 位数字" required>' +
+            '<button type="button" class="authsend" id="authSendCode">' +
+            '发送验证码</button>' +
+            '</div></div>'
+          : '') +
         '<label class="authfield"><span>密码</span>' +
         '<input name="password" type="password" autocomplete="new-password" ' +
         'minlength="8" maxlength="128" placeholder="至少 8 个字符" required>' +
@@ -604,8 +621,11 @@
         'maxlength="128" placeholder="你的密码" required></label>' +
         '<button class="primary authsubmit" type="submit">登录</button>' +
         '<p class="authswitch">' +
-        '<button type="button" class="linkbutton" id="authForgot">忘记密码？</button>' +
-        ' 用注册邮箱收验证码重置</p>';
+        (emailRequired
+          ? '<button type="button" class="linkbutton" id="authForgot">' +
+            '忘记密码？</button> 用注册邮箱收验证码重置'
+          : '') +
+        '</p>';
     }
 
     const forgot = form.querySelector('#authForgot');
@@ -780,11 +800,13 @@
     if (!username) return setAuthError('请输入用户名。');
     if (password.length < 8) return setAuthError('密码至少需要 8 个字符。');
     if (mode === 'register') {
-      if (!EMAIL_RE.test(email)) {
-        return setAuthError('请输入有效的邮箱地址，用于接收验证码。');
-      }
-      if (!/^\d{6}$/.test(code)) {
-        return setAuthError('请输入邮箱里收到的 6 位数字验证码。');
+      if (emailRequired) {
+        if (!EMAIL_RE.test(email)) {
+          return setAuthError('请输入有效的邮箱地址，用于接收验证码。');
+        }
+        if (!/^\d{6}$/.test(code)) {
+          return setAuthError('请输入邮箱里收到的 6 位数字验证码。');
+        }
       }
       if (password !== confirm) {
         return setAuthError('两次输入的密码不一致。');
@@ -802,11 +824,13 @@
           ? {
               username: username,
               password: password,
-              display_name: displayName,
-              email: email,
-              code: code
+              display_name: displayName
             }
           : { username: username, password: password };
+      if (mode === 'register' && emailRequired) {
+        body.email = email;
+        body.code = code;
+      }
       const payload = await request(path, {
         method: 'POST',
         body: JSON.stringify(body)

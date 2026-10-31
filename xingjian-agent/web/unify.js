@@ -1,12 +1,5 @@
-/* unify.js - 统一层（对齐间距、圆角与状态色）
- *
- * 行间 V0.13 的增量交互层。基线逻辑在 index.html 的内联脚本里（render /
- * home / project / events / ai 等），这一层通过覆盖同名全局函数来增强，
- * 不做任何会破坏基线的操作。
- *
- * 目前是占位实现：不修改任何页面行为，仅让引用不再是 404。
- */
-(function () {
-  'use strict';
-  // Intentionally empty. Add overrides here when this layer is built.
-})();
+let previousSettingsPage='home',previousMemoryPage='home';
+const unifyGo=go,unifyRender=render,unifyBind=bind;
+go=function(p){if(p==='settings'&&page!=='settings')previousSettingsPage=page;if(p==='memory'&&page!=='memory')previousMemoryPage=page;unifyGo(p)};
+render=function(){document.body.classList.toggle('settings-page',page==='settings');unifyRender();if(page==='memory'){$('.memory-page').insertAdjacentHTML('beforeend','<button class="settings-exit" id="exitMemory" aria-label="退出 AI 记忆库" title="退出 AI 记忆库">×</button>');$('#exitMemory').onclick=()=>go(previousMemoryPage==='memory'?'home':previousMemoryPage)}};
+bind=function(){unifyBind();if(page==='home'){$('#homeComposer input').placeholder='说说你的想法…'}if(page==='settings'){$('.settings').insertAdjacentHTML('beforeend','<button class="settings-exit" id="exitSettings" aria-label="退出设置" title="退出设置">×</button>');$('#exitSettings').onclick=()=>go(previousSettingsPage==='settings'?'home':previousSettingsPage)}};

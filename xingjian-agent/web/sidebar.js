@@ -1,12 +1,3 @@
-/* sidebar.js - 侧边栏层（导航、账号、折叠）
- *
- * 行间 V0.13 的增量交互层。基线逻辑在 index.html 的内联脚本里（render /
- * home / project / events / ai 等），这一层通过覆盖同名全局函数来增强，
- * 不做任何会破坏基线的操作。
- *
- * 目前是占位实现：不修改任何页面行为，仅让引用不再是 404。
- */
-(function () {
-  'use strict';
-  // Intentionally empty. Add overrides here when this layer is built.
-})();
+const sidebarToggle=$('#mainNavToggle');$('.sidebar').append(sidebarToggle);sidebarToggle.innerHTML='<span class="sidebar-collapse-arrow"><svg viewBox="0 0 22 22" aria-hidden="true"><path d="m13 5-6 6 6 6"/></svg></span><span class="sidebar-expand-mark">'+nsvg('panel')+'</span>';
+function updateSidebarToggle(){let collapsed=$('.app').classList.contains('nav-collapsed');sidebarToggle.title=collapsed?'展开侧边栏':'收起侧边栏';sidebarToggle.setAttribute('aria-label',sidebarToggle.title);sidebarToggle.setAttribute('aria-expanded',String(!collapsed));$('.sidebar .brand').title='行间';}
+const previousSidebarClick=sidebarToggle.onclick;sidebarToggle.onclick=e=>{previousSidebarClick(e);updateSidebarToggle()};updateSidebarToggle();

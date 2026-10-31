@@ -1,6 +1,1 @@
-/* home-clean.css - 首页精简层（去掉低频元素，突出今天）
- *
- * 行间 V0.13 的增量样式层。基础样式仍在 index.html 的内联 <style> 里，
- * 这一层只做局部覆盖，加载顺序在 agent.css / auth.css 之前。
- * 目前是占位文件：不含任何规则，页面表现与纯内联版本一致。
- */
+.homepage .note-footer,.homepage .scenariochips{display:none}.homepage .hai-scroll:not(.with-response){display:flex;align-items:center;justify-content:center;text-align:center;overflow:hidden}.homepage .hai-scroll:not(.with-response)>small{display:none}.homepage .hai-welcome{font-size:18px;margin:0;padding:10px 15px}.homepage .hai-scroll.with-response{display:block;text-align:left;overflow:auto;scrollbar-width:thin}.lock-icon{display:inline-flex;align-items:center;justify-content:center;color:#8a8299;vertical-align:middle;flex-shrink:0}.lock-icon svg,.detail-lock-toggle svg{width:15px;height:15px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}.hblock .lock-icon svg{width:11px;height:11px}.detail-lock-toggle{display:inline-flex;align-items:center;gap:6px;border:1px solid #e3e8e4;border-radius:7px;background:white;color:#6d7c72;padding:4px 8px;min-height:28px;font-size:11px;margin-left:auto}.detail-lock-toggle[aria-pressed=true]{background:#eeebf4;border-color:#c6bcd8;color:#75638d}.infocard .info-titleline{gap:8px}.infocard .info-title{font-size:16px!important}.info-lockmark{display:none}.homepage .hai .composer{margin-bottom:6px}

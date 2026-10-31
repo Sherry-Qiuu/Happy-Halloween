@@ -1,12 +1,5 @@
-/* home-clean.js - 首页精简层（去掉低频元素，突出今天）
- *
- * 行间 V0.13 的增量交互层。基线逻辑在 index.html 的内联脚本里（render /
- * home / project / events / ai 等），这一层通过覆盖同名全局函数来增强，
- * 不做任何会破坏基线的操作。
- *
- * 目前是占位实现：不修改任何页面行为，仅让引用不再是 404。
- */
-(function () {
-  'use strict';
-  // Intentionally empty. Add overrides here when this layer is built.
-})();
+const lockDrawing='<svg viewBox="0 0 22 22" aria-hidden="true"><rect x="5" y="10" width="12" height="9" rx="2"/><path d="M7 10V7a4 4 0 0 1 8 0v3M11 14v2"/></svg>';
+const priorCleanHome=home,priorCleanHomeBind=bind,priorCleanInfo=infoEditor;
+home=function(){return priorCleanHome().replace(/<span title="禁止灵活调整">▣<\/span>/g,`<span class="lock-icon" aria-label="已锁定" title="已锁定，不参与灵活调整">${lockDrawing}</span>`).replace(/▣ /g,`<span class="lock-icon" aria-label="已锁定">${lockDrawing}</span>`)};
+bind=function(){priorCleanHomeBind();if(page!=='home')return;document.querySelectorAll('.note-footer,.scenariochips').forEach(e=>e.remove());const region=$('.hai-scroll');region.classList.toggle('with-response',!!hdraft||!!hmessage);if(!hdraft&&!hmessage)region.querySelectorAll('small').forEach(e=>e.remove())};
+infoEditor=function(kind,id,d=date,h=10){priorCleanInfo(kind,id,d,h);let field=$('#i-locked'),titleLine=$('.info-titleline'),button=document.createElement('button');button.type='button';button.className='detail-lock-toggle';button.setAttribute('aria-label','切换任务锁定');const associatedLock=kind!=='task'&&!!hs.tasks.find(t=>t.id===$('#i-taskvalue')?.value)?.locked;function refresh(){let locked=field.checked||associatedLock;button.setAttribute('aria-pressed',String(locked));button.innerHTML=lockDrawing+`<span>${locked?'已锁定':'锁定'}</span>`;button.title=associatedLock?'关联待办已锁定；需先到待办中解锁。':'锁定后不参与 AI 灵活调整'}refresh();button.onclick=()=>{if(associatedLock)return toast('关联待办已锁定，请先在对应待办中解锁。');field.checked=!field.checked;field.dispatchEvent(new Event('change',{bubbles:true}));refresh()};field.addEventListener('change',refresh);titleLine.append(button)};
