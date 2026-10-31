@@ -39,8 +39,15 @@ services:
       - key: DEEPSEEK_API_KEY
         sync: false
       # Email verification for sign-up and password reset.
+      #
+      # Render drops outbound SMTP connections (ports 465 and 587 both
+      # time out after ~20s), so the smtp transport cannot deliver from
+      # this host. The console transport prints the 6-digit code to the
+      # service logs instead, which is enough for a demo: register, then
+      # find "验证码" under Logs. Switch back to smtp only when sending
+      # through an HTTPS mail API or a host that allows SMTP egress.
       - key: MAIL_TRANSPORT
-        value: smtp
+        value: console
       - key: SMTP_HOST
         value: smtp.qq.com
       - key: SMTP_PORT
