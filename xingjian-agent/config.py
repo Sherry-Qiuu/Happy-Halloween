@@ -98,6 +98,9 @@ class Settings:
     allow_registration: bool
     trust_proxy: bool
     max_users: int
+    # When false, sign-up needs no email code and the email field is
+    # optional. Keep true unless outbound mail is unavailable.
+    require_email: bool = True
 
     # Email verification (registration and password reset). The SMTP
     # password is a QQ Mail "授权码", never the mailbox login password.
@@ -123,6 +126,16 @@ class Settings:
     @property
     def chat_endpoint(self) -> str:
         return f"{self.base_url.rstrip('/')}/chat/completions"
+
+    @property
+    def email_required(self) -> bool:
+        """True when sign-up and password reset must verify a code.
+
+        Only the explicit switch matters here: whether SMTP happens to be
+        configured is a separate question, and silently dropping the code
+        requirement when mail is missing would weaken the default.
+        """
+        return self.require_email
 
     @property
     def mail_configured(self) -> bool:
@@ -193,6 +206,7 @@ def load_settings(env_file: Path | None = None) -> Settings:
         allow_registration=_as_bool("XINGJIAN_ALLOW_REGISTRATION", True),
         trust_proxy=_as_bool("XINGJIAN_TRUST_PROXY"),
         max_users=_as_int("XINGJIAN_MAX_USERS", 5_000),
+        require_email=_as_bool("XINGJIAN_REQUIRE_EMAIL", True),
         mail_transport=_choice(
             "MAIL_TRANSPORT", "smtp", ("smtp", "console")
         ),

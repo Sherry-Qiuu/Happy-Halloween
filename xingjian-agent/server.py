@@ -476,6 +476,7 @@ class AgentHandler(BaseHTTPRequestHandler):
                 "service": "xingjian",
                 "registration": settings.allow_registration,
                 "email": settings.mail_configured,
+                "email_required": settings.email_required,
             },
         )
 
@@ -508,6 +509,11 @@ class AgentHandler(BaseHTTPRequestHandler):
 
     def _handle_email_code(self) -> None:
         settings = self.server.settings
+        if not settings.email_required:
+            raise AccountError(
+                "邮箱验证已关闭，直接注册即可。",
+                code="email_disabled",
+            )
         ip = self._client_ip()
         if not self.server.email_code_ip.allow(ip):
             raise AccountError(
@@ -606,23 +612,28 @@ class AgentHandler(BaseHTTPRequestHandler):
         display_name = validate_display_name(
             payload.get("display_name"), username
         )
-        email = validate_email(payload.get("email"))
-        self.server.accounts.ensure_registration_available(
-            username, email
-        )
+        email_required = self.server.settings.email_required
+        if email_required:
+            email = validate_email(payload.get("email"))
+            self.server.accounts.ensure_registration_available(
+                username, email
+            )
+        else:
+            email = None
         if self.server.accounts.user_count >= self.server.settings.max_users:
             raise AccountError(
                 "账号数量已达到上限，请联系管理员。",
                 status=507,
                 code="user_limit",
             )
-        self._consume_code(email, "register", payload.get("code"))
+        if email_required:
+            self._consume_code(email, "register", payload.get("code"))
         user = self.server.accounts.create_user(
             username,
             password,
             display_name,
             email=email,
-            email_verified=True,
+            email_verified=email is not None,
             ip=ip,
         )
         token = self.server.accounts.create_session(user["id"])
@@ -633,6 +644,11 @@ class AgentHandler(BaseHTTPRequestHandler):
         )
 
     def _handle_reset_password(self) -> None:
+        if not self.server.settings.email_required:
+            raise AccountError(
+                "邮箱验证已关闭，无法通过邮箱重置密码。",
+                code="email_disabled",
+            )
         ip = self._client_ip()
         if not self.server.reset_ip.allow(ip):
             raise AccountError(

@@ -33,6 +33,10 @@ services:
         value: "1"
       - key: XINGJIAN_ALLOW_REGISTRATION
         value: "1"
+      # Email verification is turned off for the demo: no code is sent and
+      # registration only needs a username and password.
+      - key: XINGJIAN_REQUIRE_EMAIL
+        value: "0"
       - key: DEEPSEEK_MODEL
         value: deepseek-flash
       # Fill these in the Render dashboard; never commit real secrets.
