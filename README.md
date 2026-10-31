@@ -208,6 +208,8 @@ GitHub Pages 从 `main` 自动发布同一份静态文件（`.github/workflows/p
 - **画像、草稿不出服务端**。`persona` 与 `draft` 事件只被服务端消费，不转发浏览器（`draft.predicted` 是模型的自我押注，不该给用户看）。
 - **模型的话不能当数据**。画像只接收校验通过的增量；用户没说过的话，`quote` 对不上就被丢。
 
+这条链路的硬约束（9 条）、上下文与延迟预算、降级矩阵和评测门槛，写在 [AI 运行规范](docs/ai-runtime-spec.md) 里；`scripts/ai_eval.py` 是可以跑的版本。
+
 ## 重排内核（calendar-rescheduler）
 
 独立于主应用的一个包：先评审策略，再接入产品。
@@ -312,6 +314,7 @@ GitHub Pages 从 `main` 自动发布同一份静态文件（`.github/workflows/p
 ```powershell
 cd xingjian-agent
 python -m unittest discover -s tests   # 108 个后端测试
+python scripts/ai_eval.py              # 44 项 AI 运行期用例 + 预算门槛
 node tests/dom_smoke.mjs               # 22 项 AI 面板前端链路
 node tests/auth_smoke.mjs              # 17 项登录 / 注册 / 找回链路
 ```
@@ -390,6 +393,7 @@ Happy-Halloween/
 | 文档 | 内容 |
 | --- | --- |
 | [`docs/README.md`](docs/README.md) | 文档索引、阅读路线、证据强度说明 |
+| [`docs/ai-runtime-spec.md`](docs/ai-runtime-spec.md) | AI 运行规范：硬约束、上下文与延迟预算、降级矩阵、评测门槛 |
 | [`docs/research/`](docs/research/) | 需求全景、画像类型学、冷启动报告、压力模拟（含 `sim/`） |
 | [`docs/prd/README.md`](docs/prd/README.md) | AI 目标陪练闭环：界面级 PRD 与验收清单 |
 | [`calendar-rescheduler/backend/STRATEGY.md`](calendar-rescheduler/backend/STRATEGY.md) | 六步算法、P1–P8 参数、A18–A20 动作、失败模式 |
