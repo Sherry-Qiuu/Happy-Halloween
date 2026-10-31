@@ -1,0 +1,22 @@
+/* Voice input state for every AI composer (Home, Project, review). */
+.composer button.voice-on {
+  background: #e8f4ec;
+  border-color: #b9dcc6;
+  color: #2e7e4d;
+  box-shadow: 0 0 0 3px rgba(46, 126, 77, .13);
+  animation: voice-pulse 1.4s ease-in-out infinite;
+}
+
+.composer button.voice-on:hover {
+  background: #dff0e6;
+  color: #246b41;
+}
+
+@keyframes voice-pulse {
+  0%, 100% { box-shadow: 0 0 0 3px rgba(46, 126, 77, .12); }
+  50% { box-shadow: 0 0 0 6px rgba(46, 126, 77, .06); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .composer button.voice-on { animation: none; }
+}

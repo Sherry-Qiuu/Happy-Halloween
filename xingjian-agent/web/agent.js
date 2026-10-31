@@ -463,7 +463,7 @@
         'data-agent-stop aria-label="停止生成">■</button></form>'
       : '<form class="composer"><input aria-label="与 AI 对话" ' +
         'placeholder="说说你的想法…"><button type="button" data-mic ' +
-        'title="演示语音转写" aria-label="模拟语音输入">♩</button>' +
+        'title="语音输入（浏览器转写）" aria-label="语音输入">♩</button>' +
         '<button class="primary" aria-label="发送">↑</button></form>';
     const endChat =
       context === 'review'
@@ -956,6 +956,18 @@
     event.preventDefault();
     dismissProposal(Number(target.getAttribute('data-agent-keep')));
   });
+
+  document.addEventListener('submit', function (event) {
+    var form = event.target.closest && event.target.closest('.ai .composer');
+    if (!form) return;
+    event.preventDefault();
+    var input = form.querySelector('input');
+    if (!input) return;
+    var value = input.value.trim();
+    if (!value) return;
+    input.value = '';
+    window.send(value);
+  }, true);
 
   readEndpoint();
   loadChats();
