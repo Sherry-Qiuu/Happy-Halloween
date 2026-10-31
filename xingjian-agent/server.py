@@ -48,6 +48,7 @@ from urllib.parse import unquote, urlsplit
 
 import deepseek
 import mock_agent
+import policy
 import sched_profile
 from accounts import (
     MAX_DATA_BYTES,
@@ -67,6 +68,7 @@ MAX_MESSAGES = 20
 MAX_CONTENT = 2000
 MAX_STATE = 60_000
 REPORT_MAX_TOKENS = 700
+REPLAY_DELAY = 0.012  # seconds between replayed chunks of a sanitized reply
 
 LOGIN_IP_LIMIT = 30
 LOGIN_USER_LIMIT = 20
@@ -632,6 +634,10 @@ class AgentHandler(BaseHTTPRequestHandler):
         profile = self._load_profile(user["id"])
         turn = int(profile.get("turn", 0)) + 1
         persona_raw: dict[str, Any] | None = None
+        draft_raw: dict[str, Any] | None = None
+        proposal: dict[str, Any] | None = None
+        parts: list[str] = []
+        user_text = history[-1]["content"] if history else ""
         messages = chat_messages(
             history, state, sched_profile.prompt_block(profile, turn)
         )
@@ -643,17 +649,14 @@ class AgentHandler(BaseHTTPRequestHandler):
                 settings, messages, goals_count, context=context
             ):
                 if kind == "delta":
-                    alive = self._write_event("delta", {"text": value})
+                    parts.append(value)
                 elif kind == "proposal":
-                    alive = self._write_event("proposal", value)
+                    proposal = value if isinstance(value, dict) else None
                 elif kind == "persona":
                     # Server-side only: never forwarded to the browser.
                     persona_raw = value if isinstance(value, dict) else None
-                    alive = True
-                else:
-                    alive = True
-                if not alive:
-                    break
+                elif kind == "draft":
+                    draft_raw = value if isinstance(value, dict) else None
         except deepseek.UpstreamError as error:
             self._write_event("error", {"message": str(error)})
         except (BrokenPipeError, ConnectionResetError):
@@ -663,12 +666,48 @@ class AgentHandler(BaseHTTPRequestHandler):
             self._write_event(
                 "error", {"message": f"服务端异常：{type(error).__name__}"}
             )
+        else:
+            self._emit_reply("".join(parts), user_text, draft_raw)
+            if proposal:
+                self._write_event("proposal", proposal)
         finally:
-            self._record_profile(
-                user["id"], profile, persona_raw, history, turn
-            )
+            if not policy.detect_crisis(user_text):
+                self._record_profile(
+                    user["id"], profile, persona_raw, history, turn
+                )
             self._write_event("done", {})
             self._finish_stream()
+
+    # ------------------------------------------------------------------
+    # Output policy
+    # ------------------------------------------------------------------
+    def _emit_reply(
+        self,
+        raw: str,
+        user_text: str,
+        draft_raw: dict[str, Any] | None,
+    ) -> None:
+        """Filter the reply, then replay it — only clean text is streamed."""
+        crisis = policy.detect_crisis(user_text)
+        clean, violations = policy.apply(raw, crisis=crisis)
+
+        if not crisis:
+            draft = policy.validate_draft(draft_raw)
+            missing = policy.missing_facts(draft, clean)
+            if missing:
+                clean, added = policy.append_missing(clean, missing)
+                violations.append({"rule": "fact_omitted", "facts": added})
+
+        for item in violations:
+            sys.stdout.write(
+                "[policy] " + json.dumps(item, ensure_ascii=False) + "\n"
+            )
+        sys.stdout.flush()
+
+        for chunk in policy.chunks(clean):
+            if not self._write_event("delta", {"text": chunk}):
+                return
+            time.sleep(REPLAY_DELAY)
 
     # ------------------------------------------------------------------
     # Scheduling profile
@@ -760,6 +799,13 @@ class AgentHandler(BaseHTTPRequestHandler):
                 HTTPStatus.BAD_GATEWAY, {"error": "模型没有返回内容"}
             )
             return
+        # The reflection report keeps its paragraphs but obeys the same
+        # tone rules: no emoji, no exclamation marks, no bait-and-switch.
+        report, violations = policy.apply(report, max_sentences=None)
+        for item in violations:
+            sys.stdout.write(
+                "[policy] " + json.dumps(item, ensure_ascii=False) + "\n"
+            )
         self._send_json(HTTPStatus.OK, {"report": report})
 
     # ------------------------------------------------------------------

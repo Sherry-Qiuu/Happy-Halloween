@@ -141,19 +141,22 @@ def parse_proposal(raw: str, goals_count: int | None) -> dict[str, Any] | None:
 
 def parse_turn(
     raw: str, goals_count: int | None
-) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
-    """Split the block into ``(proposal, persona_raw)``.
+) -> tuple[dict[str, Any] | None, dict[str, Any] | None, dict[str, Any] | None]:
+    """Split the block into ``(proposal, persona_raw, draft_raw)``.
 
-    The persona payload is *not* trusted here: the server validates every
-    quote against the user's own words before anything is stored.
+    Neither the persona nor the draft is trusted here: the server checks
+    every quote against the user's own words, and reads the draft only to
+    confirm the facts it promised actually reached the reply.
     """
     payload = _block_payload(raw)
     if payload is None:
-        return None, None
+        return None, None, None
     persona = payload.get("persona")
+    draft = payload.get("draft")
     return (
         _proposal_from(payload, goals_count),
         persona if isinstance(persona, dict) else None,
+        draft if isinstance(draft, dict) else None,
     )
 
 
@@ -230,7 +233,7 @@ def iter_reply(
     goals_count: int | None = None,
     context: str = "home",
 ) -> Iterator[tuple[str, Any]]:
-    """Yield ``("delta", text)`` and ``("proposal", dict)`` events."""
+    """Yield ``delta`` / ``proposal`` / ``persona`` / ``draft`` events."""
     del context  # the panel is already described inside the state block
     splitter = ProposalSplitter()
     for chunk in iter_deltas(settings, messages):
@@ -240,11 +243,13 @@ def iter_reply(
     tail = splitter.finish()
     if tail.strip():
         yield "delta", tail
-    proposal, persona = parse_turn(splitter.block, goals_count)
+    proposal, persona, draft = parse_turn(splitter.block, goals_count)
     if proposal:
         yield "proposal", proposal
     if persona:
         yield "persona", persona
+    if draft:
+        yield "draft", draft
 
 
 def complete(

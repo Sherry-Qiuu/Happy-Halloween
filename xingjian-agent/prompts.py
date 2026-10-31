@@ -65,7 +65,14 @@ CHAT_PROMPT = """你是「行间」里的 AI 助手。行间是一个把目标�
 - key 只能是 rhythm、block、buffer、avoid、density、goal_count、note 之一。
 - 一轮最多 3 条。
 - 用户否认或纠正时，把对应的 key 放进 "retire" 数组，不要写新值。
-- 不要写性格、能力、动机、健康、身份，也不要新增上面之外的 key。""".format(
+- 不要写性格、能力、动机、健康、身份，也不要新增上面之外的 key。
+
+同一个改动块里还可以带一个 "draft"，是你判断了但不会说出口的部分：
+{{"draft": {{"predicted": 0.6, "facts": ["实际 52 分钟"], "risk": "他可能又会高估"}}}}
+- predicted 是你对"他这次能不能做成"的真实估计，0 到 1，只给系统看。
+- facts 是这一轮必须让用户看到的事实，必须带数字，最多 3 条，每条不超过 40 字。
+- risk 是你担心但不会说出口的话，只给系统看。
+- 正文里要出现 facts 里的数字；draft 不会显示给用户。""".format(
     start=PROPOSAL_START, end=PROPOSAL_END
 )
 

@@ -317,6 +317,7 @@ xingjian-agent/
 ├─ protocol.py          SSE 编码 + 提案白名单校验
 ├─ prompts.py           系统提示词 + 应用状态序列化
 ├─ sched_profile.py     排布画像：后验指标、漂移检测、姿态、写入校验
+├─ policy.py            输出策略：正向框架、事实不省略、危机拦截
 ├─ mock_agent.py        离线示例回复
 ├─ web/
 │  ├─ index.html        原型（接入 auth.js / auth.css）
@@ -358,12 +359,30 @@ xingjian-agent/
 | 不回灌 | `server._record_profile()` | 模型的话不能当数据；只接收校验通过的增量 |
 | 不进前端 | `server` 的 `persona` 事件 | 只在服务端消费，不转发浏览器 |
 
-可调参数集中在 `sched_profile.py` 顶部：τ=21 天、`PRIOR_K`=5、漂移阈值 1.5σ/3×MAD、单轮 3 条。
+### 12.1 输出规则（5.6 / 5.7）
+
+语气类规则没法靠提示词保证，所以全部由 `policy.py` 在服务端跑一遍再发出去：
+
+| 规则 | 位置 | 做法 |
+| --- | --- | --- |
+| 禁 emoji、感叹号 | `policy.apply()` | 直接删/替换 |
+| 鸡汤、冷话、比较式安慰、否定感受、伪造低评价 | `policy.apply()` | 整句丢弃 |
+| **但句子带数字就保留** | `policy.apply()` | 事实优先于语气，只记违规 |
+| 正文 ≤3 句 | `policy.apply(max_sentences=3)` | 截断；反思报告传 `None` 不受限 |
+| 想一套说一套 | `policy.validate_draft()` | `draft` 里的 `predicted`/`risk` 只落日志，永不出现在正文 |
+| 事实不可省略 | `policy.missing_facts()` + `append_missing()` | 草稿承诺的数字没出现，补一行中性「记录：…」，不改写原句 |
+| 危机例外 | `policy.detect_crisis()` | 命中自伤表述时，整段替换为固定安全文案，不走正向框架 |
+
+**代价（有意选择）**：正文先缓冲、过策略、再分片回放，所以首字延迟等于「模型生成完」。换来的是浏览器里不会出现违规句子——如果边流边改，用户会先看到「你又超时了」再被替换，那比慢更糟。
+
+规则优先级固定为：**危机 > 事实 > 语气**。任何冲突都按这个顺序裁决。
+
+可调参数集中在 `sched_profile.py` 与 `policy.py` 顶部：τ=21 天、`PRIOR_K`=5、漂移阈值 1.5σ/3×MAD、单轮 3 条、正文 3 句、回放 4 字/12ms。
 
 验证：
 
 ```bash
-python -m unittest discover -s tests    # 67+ 项，含 34 项画像用例
+python -m unittest discover -s tests    # 90 项，含 34 项画像 + 18 项输出策略
 python scripts/profile_demo.py          # 七轮行为：写入、拒绝、漂移、押注
 ```
 

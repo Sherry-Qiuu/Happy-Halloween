@@ -397,9 +397,10 @@ class WiringTest(unittest.TestCase):
             '"date":"2026-10-31","title":"临时会议"}],'
             '"persona":{"set":[{"key":"block","value":"25","quote":"只能专注"}]}}'
         )
-        proposal, persona = deepseek.parse_turn(raw, 1)
+        proposal, persona, draft = deepseek.parse_turn(raw, 1)
         self.assertEqual(len(proposal["changes"]), 1)
         self.assertEqual(persona["set"][0]["key"], "block")
+        self.assertIsNone(draft)
         # The proposal handed to the browser carries no persona payload.
         self.assertNotIn("persona", proposal)
 
@@ -407,9 +408,22 @@ class WiringTest(unittest.TestCase):
         import deepseek
 
         raw = '{"summary":"x","changes":[],"persona":{"set":[]}}'
-        proposal, persona = deepseek.parse_turn(raw, None)
+        proposal, persona, draft = deepseek.parse_turn(raw, None)
         self.assertIsNone(proposal)
         self.assertIsNotNone(persona)
+        self.assertIsNone(draft)
+
+    def test_draft_travels_separately(self):
+        import deepseek
+
+        raw = (
+            '{"summary":"s","changes":[],'
+            '"draft":{"predicted":0.4,"facts":["实际 52 分钟"]}}'
+        )
+        proposal, persona, draft = deepseek.parse_turn(raw, None)
+        self.assertIsNone(proposal)
+        self.assertIsNone(persona)
+        self.assertEqual(draft["facts"], ["实际 52 分钟"])
 
 
 if __name__ == "__main__":
