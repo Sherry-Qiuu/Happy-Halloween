@@ -102,7 +102,7 @@ server information/
 | --- | --- | --- |
 | `DEEPSEEK_API_KEY` | 空 | 只存在服务端，浏览器拿不到 |
 | `DEEPSEEK_BASE_URL` | `https://api.deepseek.com/v1` | OpenAI 兼容入口 |
-| `DEEPSEEK_MODEL` | `deepseek-chat` | 也支持 `deepseek-reasoner` |
+| `DEEPSEEK_MODEL` | `deepseek-flash` | 也接受 `deepseek-v4-pro`、`deepseek-chat`、`deepseek-reasoner`；用 `scripts/check_key.py` 查这个 key 到底能用哪些 |
 | `AGENT_MOCK` | `0` | `1` = 离线示例回复 |
 | `AGENT_TEMPERATURE` | `0.4` | |
 | `AGENT_MAX_TOKENS` | `1200` | |
@@ -316,6 +316,7 @@ xingjian-agent/
 ├─ deepseek.py          DeepSeek 流式客户端 + 正文/提案分离器
 ├─ protocol.py          SSE 编码 + 提案白名单校验
 ├─ prompts.py           系统提示词 + 应用状态序列化
+├─ sched_profile.py     排布画像：后验指标、漂移检测、姿态、写入校验
 ├─ mock_agent.py        离线示例回复
 ├─ web/
 │  ├─ index.html        原型（接入 auth.js / auth.css）
@@ -323,9 +324,12 @@ xingjian-agent/
 │  ├─ auth.css          登录页、同步状态、账号弹窗样式
 │  ├─ agent.js          DeepSeek 面板桥接（按账号隔离聊天记录）
 │  └─ agent.css         AI 卡片 / 状态点 / 打字动画
-├─ tests/               37 + 22 + 11 项离线测试
+├─ docs/
+│  └─ profile-rules.md  画像与 Agent 行为规则（条款编号 P-0..P-10）
+├─ tests/               离线测试（含 test_sched_profile.py）
 ├─ scripts/
-│  └─ verify_deploy.py  部署后从外部检查 DNS / TLS / 登录页 / API
+│  ├─ verify_deploy.py  部署后从外部检查 DNS / TLS / 登录页 / API
+│  └─ profile_demo.py   七轮对话演示：画像如何被写入、拒绝、漂移
 ├─ deploy/
 │  ├─ bootstrap.sh      Ubuntu/Debian 一键部署（Docker + Caddy + 证书）
 │  ├─ DNS.md            calhub.asia 的 DNSPod / server hold 排查记录
@@ -338,3 +342,29 @@ xingjian-agent/
 ├─ start.ps1 / start.sh
 └─ .env.example
 ```
+
+---
+
+## 12. 排布画像（Agent 行为规则）
+
+规则文档在 `docs/profile-rules.md`（条款编号 P-0..P-10、7.x）。**这些规则不是写在提示词里指望模型自觉，而是由代码逐条兜住：**
+
+| 环节 | 位置 | 保证什么 |
+| --- | --- | --- |
+| 写入 | `sched_profile.validate_delta()` | 槽位白名单、值域、单轮 ≤3 条、`quote` 必须是用户原话的子串 |
+| 存储 | `accounts.load_profile / save_profile` | 按账号存 `{user_id}.profile.json`，与浏览器数据分开，客户端覆盖不到 |
+| 生效 | `prompts.chat_messages(profile_block=)` | 独立 `<persona>` 系统消息，只给参数不给标签 |
+| 下一轮 | `sched_profile.advance()` | 本轮写入下一轮才生效（P-9） |
+| 不回灌 | `server._record_profile()` | 模型的话不能当数据；只接收校验通过的增量 |
+| 不进前端 | `server` 的 `persona` 事件 | 只在服务端消费，不转发浏览器 |
+
+可调参数集中在 `sched_profile.py` 顶部：τ=21 天、`PRIOR_K`=5、漂移阈值 1.5σ/3×MAD、单轮 3 条。
+
+验证：
+
+```bash
+python -m unittest discover -s tests    # 67+ 项，含 34 项画像用例
+python scripts/profile_demo.py          # 七轮行为：写入、拒绝、漂移、押注
+```
+
+边界：画像只改排布参数（块长、时段、缓冲、措辞），不改供给（任务、目标、是否主动提议）；`scheduling_params()["proactive"]` 固定为 `L1`。

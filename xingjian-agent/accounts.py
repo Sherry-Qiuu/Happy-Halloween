@@ -34,6 +34,7 @@ SESSION_BYTES = 32
 MAX_PASSWORD = 128
 MAX_DISPLAY = 40
 MAX_DATA_BYTES = 512 * 1024
+MAX_PROFILE_BYTES = 64 * 1024
 AUDIT_MAX_BYTES = 2 * 1024 * 1024
 SESSION_COOKIE = "xj_session"
 
@@ -495,6 +496,7 @@ class AccountStore:
             self._revoke_all_locked(user_id)
             try:
                 self._data_path(user_id).unlink(missing_ok=True)
+                self._profile_path(user_id).unlink(missing_ok=True)
             except OSError as error:
                 raise StorageError(
                     f"账号已删除，但数据文件未能删除: {error}"
@@ -600,6 +602,67 @@ class AccountStore:
                 "用户标识不正确。", status=400, code="bad_user_id"
             )
         return self.data_dir / f"{user_id}.json"
+
+    def _profile_path(self, user_id: str) -> Path:
+        """The scheduling profile lives beside the app data, not inside.
+
+        The browser owns ``data``; the server owns the profile. Keeping
+        them apart means a client save can never overwrite what the agent
+        learned, and an account purge has one obvious file to remove.
+        """
+        if not USER_ID_RE.match(user_id or ""):
+            raise AccountError(
+                "用户标识不正确。", status=400, code="bad_user_id"
+            )
+        return self.data_dir / f"{user_id}.profile.json"
+
+    def load_profile(self, user_id: str) -> dict[str, Any] | None:
+        with self._lock:
+            if self._find_by_id(user_id) is None:
+                raise AccountError(
+                    "账号不存在。", status=401, code="unknown_user"
+                )
+            payload = self._read_json(self._profile_path(user_id))
+            profile = payload.get("profile")
+            return profile if isinstance(profile, dict) else None
+
+    def save_profile(self, user_id: str, profile: dict[str, Any]) -> str:
+        if not isinstance(profile, dict):
+            raise AccountError("画像必须是 JSON 对象。", code="profile_invalid")
+        try:
+            encoded = json.dumps(profile, ensure_ascii=False)
+        except (TypeError, ValueError) as error:
+            raise AccountError(
+                f"画像不是合法 JSON: {error}", code="profile_invalid"
+            ) from error
+        if len(encoded.encode("utf-8")) > MAX_PROFILE_BYTES:
+            raise AccountError(
+                "画像超过 64 KB，暂时无法保存。",
+                status=413,
+                code="profile_too_large",
+            )
+        updated_at = _now()
+        with self._lock:
+            if self._find_by_id(user_id) is None:
+                raise AccountError(
+                    "账号不存在。", status=401, code="unknown_user"
+                )
+            self._write_json(
+                self._profile_path(user_id),
+                {
+                    "version": 1,
+                    "updated_at": updated_at,
+                    "profile": profile,
+                },
+            )
+            return _iso(updated_at) or ""
+
+    def delete_profile(self, user_id: str) -> None:
+        with self._lock:
+            try:
+                self._profile_path(user_id).unlink(missing_ok=True)
+            except OSError:
+                pass
 
     def load_data(
         self, user_id: str

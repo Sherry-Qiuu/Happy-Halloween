@@ -48,6 +48,7 @@ from urllib.parse import unquote, urlsplit
 
 import deepseek
 import mock_agent
+import sched_profile
 from accounts import (
     MAX_DATA_BYTES,
     SESSION_COOKIE,
@@ -628,7 +629,12 @@ class AgentHandler(BaseHTTPRequestHandler):
             return
 
         goals_count = _goals_count(state)
-        messages = chat_messages(history, state)
+        profile = self._load_profile(user["id"])
+        turn = int(profile.get("turn", 0)) + 1
+        persona_raw: dict[str, Any] | None = None
+        messages = chat_messages(
+            history, state, sched_profile.prompt_block(profile, turn)
+        )
         self._start_stream()
 
         producer = mock_agent if settings.mock else deepseek
@@ -640,6 +646,10 @@ class AgentHandler(BaseHTTPRequestHandler):
                     alive = self._write_event("delta", {"text": value})
                 elif kind == "proposal":
                     alive = self._write_event("proposal", value)
+                elif kind == "persona":
+                    # Server-side only: never forwarded to the browser.
+                    persona_raw = value if isinstance(value, dict) else None
+                    alive = True
                 else:
                     alive = True
                 if not alive:
@@ -654,8 +664,48 @@ class AgentHandler(BaseHTTPRequestHandler):
                 "error", {"message": f"服务端异常：{type(error).__name__}"}
             )
         finally:
+            self._record_profile(
+                user["id"], profile, persona_raw, history, turn
+            )
             self._write_event("done", {})
             self._finish_stream()
+
+    # ------------------------------------------------------------------
+    # Scheduling profile
+    # ------------------------------------------------------------------
+    def _load_profile(self, user_id: str) -> dict[str, Any]:
+        try:
+            profile = self.server.accounts.load_profile(user_id)
+        except (AccountError, StorageError):
+            traceback.print_exc()
+            return sched_profile.empty_profile()
+        return profile or sched_profile.empty_profile()
+
+    def _record_profile(
+        self,
+        user_id: str,
+        profile: dict[str, Any],
+        raw_delta: dict[str, Any] | None,
+        history: list[dict[str, str]],
+        turn: int,
+    ) -> None:
+        """Validate the model's writes, then persist only what survived."""
+        if not raw_delta:
+            return
+        try:
+            result = sched_profile.advance(
+                profile,
+                user_text=history[-1]["content"] if history else "",
+                raw_delta=raw_delta,
+                turn=turn,
+            )
+            if result["changed"]:
+                self.server.accounts.save_profile(user_id, result["profile"])
+            for item in result["rejected"]:
+                sys.stdout.write(f"[profile] rejected {json.dumps(item, ensure_ascii=False)}\n")
+                sys.stdout.flush()
+        except (AccountError, StorageError, sched_profile.ProfileError):
+            traceback.print_exc()
 
     def _handle_report(self) -> None:
         settings = self.server.settings

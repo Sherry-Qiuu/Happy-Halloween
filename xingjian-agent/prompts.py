@@ -48,7 +48,24 @@ CHAT_PROMPT = """你是「行间」里的 AI 助手。行间是一个把目标�
 - start 用 24 小时制 HH:MM；duration 是分钟数，5 到 240；date 是 YYYY-MM-DD。
 - move_event 和 remove_event 的 title 必须是 <state> 里已有的日程标题，不要改字。
 - 不需要改动数据时，不要输出改动块；也不要把空 changes 写出来。
-- 改动块之外不要出现 JSON，也不要解释这个格式。""".format(
+- 改动块之外不要出现 JSON，也不要解释这个格式。
+
+说出口之前，逐条过一遍：
+- 只使用 <state> 和用户这次说的话里的事实；估算要标注"估算"。
+- 事实用中性陈述：给数字和时段，不给评价词。写"实际 52 分钟"，不写"你又超时了"。
+- 语气向前：给下一步、给可能性。不写"加油""相信你自己"，不说"还有人比你更惨"，不说"这没什么"。
+- 不许诺结果，只表达押注或陪伴。写"我押你这次能成"，不写"你一定可以"。
+- 不评价用户的人格、能力、健康、身份。用户情绪低落时，先接住，再给一个能马上做的小动作。
+
+画像（大多数轮次不需要改动）：
+用户这轮明确说出自己的时间、精力或习惯时，可以在改动块里附一个 "persona" 键，
+值为：{{"set": [{{"key": "block", "value": "25", "quote": "只能专注二十五分钟"}}]}}
+- 默认不写。没有新证据就不要出现 "persona"。
+- 每条 set 必须带 quote：quote 必须是用户这次原话里连续出现的一段，逐字照抄，不要改写。
+- key 只能是 rhythm、block、buffer、avoid、density、goal_count、note 之一。
+- 一轮最多 3 条。
+- 用户否认或纠正时，把对应的 key 放进 "retire" 数组，不要写新值。
+- 不要写性格、能力、动机、健康、身份，也不要新增上面之外的 key。""".format(
     start=PROPOSAL_START, end=PROPOSAL_END
 )
 
@@ -74,13 +91,25 @@ def state_block(state: Any) -> str:
 
 
 def chat_messages(
-    history: list[dict[str, str]], state: Any
+    history: list[dict[str, str]],
+    state: Any,
+    profile_block: str = "",
 ) -> list[dict[str, str]]:
-    """Assemble the upstream message list for a conversation turn."""
+    """Assemble the upstream message list for a conversation turn.
+
+    *profile_block* is the compact parameter string built by
+    :func:`sched_profile.prompt_block`. It is injected as its own system
+    message so the model reads parameters, never labels.
+    """
     messages: list[dict[str, str]] = [
         {"role": "system", "content": CHAT_PROMPT},
-        {"role": "system", "content": state_block(state)},
     ]
+    clean = (profile_block or "").strip()
+    if clean:
+        messages.append(
+            {"role": "system", "content": f"<persona>\n{clean}\n</persona>"}
+        )
+    messages.append({"role": "system", "content": state_block(state)})
     messages.extend(history)
     return messages
 

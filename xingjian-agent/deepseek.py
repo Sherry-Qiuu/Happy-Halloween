@@ -100,8 +100,8 @@ class ProposalSplitter:
         return self._block
 
 
-def parse_proposal(raw: str, goals_count: int | None) -> dict[str, Any] | None:
-    """Turn the raw block text into a validated proposal, if possible."""
+def _block_payload(raw: str) -> dict[str, Any] | None:
+    """Decode the JSON object inside the machine readable block."""
     text = (raw or "").strip()
     if not text:
         return None
@@ -116,8 +116,12 @@ def parse_proposal(raw: str, goals_count: int | None) -> dict[str, Any] | None:
         payload = json.loads(text[start:end + 1])
     except json.JSONDecodeError:
         return None
-    if not isinstance(payload, dict):
-        return None
+    return payload if isinstance(payload, dict) else None
+
+
+def _proposal_from(
+    payload: dict[str, Any], goals_count: int | None
+) -> dict[str, Any] | None:
     changes = sanitize_changes(payload.get("changes"), goals_count)
     if not changes:
         return None
@@ -125,6 +129,32 @@ def parse_proposal(raw: str, goals_count: int | None) -> dict[str, Any] | None:
     if not isinstance(summary, str) or not summary.strip():
         summary = fallback_summary(changes)
     return {"summary": summary.strip()[:120], "changes": changes}
+
+
+def parse_proposal(raw: str, goals_count: int | None) -> dict[str, Any] | None:
+    """Turn the raw block text into a validated proposal, if possible."""
+    payload = _block_payload(raw)
+    if payload is None:
+        return None
+    return _proposal_from(payload, goals_count)
+
+
+def parse_turn(
+    raw: str, goals_count: int | None
+) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
+    """Split the block into ``(proposal, persona_raw)``.
+
+    The persona payload is *not* trusted here: the server validates every
+    quote against the user's own words before anything is stored.
+    """
+    payload = _block_payload(raw)
+    if payload is None:
+        return None, None
+    persona = payload.get("persona")
+    return (
+        _proposal_from(payload, goals_count),
+        persona if isinstance(persona, dict) else None,
+    )
 
 
 def _payload(settings: Settings, messages: list[dict[str, str]]) -> bytes:
@@ -210,9 +240,11 @@ def iter_reply(
     tail = splitter.finish()
     if tail.strip():
         yield "delta", tail
-    proposal = parse_proposal(splitter.block, goals_count)
+    proposal, persona = parse_turn(splitter.block, goals_count)
     if proposal:
         yield "proposal", proposal
+    if persona:
+        yield "persona", persona
 
 
 def complete(
