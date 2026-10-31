@@ -7,6 +7,7 @@ https://xingjian.onrender.com
 ## 能做什么
 
 - **今天 / Project**：待办、目标、里程碑与下一步
+- **日历拖拽重排**：拖动 Home 时间块移动、拖上下边缘改时长；冲突后在 AI 面板里出方案
 - **日反思 / 周反思**：先记事实，再写想法
 - **AI 面板**：DeepSeek 流式对话，给出建议卡片；点「采用」才真正改日程
 - **排布画像**：从你的记录里学块长、时段、缓冲，只调排布参数，不动任务与目标
@@ -36,6 +37,8 @@ python server.py
 | `xingjian-agent/web/revision.css` … `unify.js` | V0.13 设计的 11 个增量层（首页 / 目标 / 反思 / 信息卡 / 侧栏 / 工作区） |
 | `xingjian-agent/web/warmgrid-skin.css` | 视觉皮肤：暖纸底、墨色主操作、薰衣草/青柠强调，只改样式不改布局；颜色已接到 Edge 外观 token |
 | `xingjian-agent/web/edge-theme.js` | Edge Fluent 外观运行时：浅色/深色/系统、5 色主题、10 个图像主题，右下角面板，选择存 localStorage |
+| `xingjian-agent/web/planner.js` | 日历重排内核：冲突检测、候选、P1–P8 画像打分、方案/备选 |
+| `xingjian-agent/web/home-reschedule.js` / `.css` | Home 时间块拖拽 / 缩放、冲突后在 AI 面板里协商与应用 |
 | `xingjian-agent/web/pages-bootstrap.js` | GitHub Pages 无后端时自动进入「本地演示模式」 |
 | `xingjian-agent/` | Python 后端：账号、数据、画像规则、DeepSeek 代理、部署 |
 | `calendar-rescheduler/` | 日历重排前后端设计包：拖拽/对话 Demo + 画像重排策略 |

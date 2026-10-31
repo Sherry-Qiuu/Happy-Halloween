@@ -395,6 +395,9 @@ xingjian-agent/
 │  ├─ agent.js          DeepSeek 面板桥接（按账号隔离聊天记录）
 │  ├─ agent.css         AI 卡片 / 状态点 / 打字动画
 │  ├─ edge-theme.js     Edge Fluent 外观切换（浅/深/系统、5 色、10 图像）
+│  ├─ planner.js        日历重排内核（冲突 / 候选 / 画像打分 / 备选）
+│  ├─ home-reschedule.js Home 时间块拖拽、缩放、冲突后在 AI 面板协商
+│  ├─ home-reschedule.css 拖拽手柄与重排方案卡样式
 │  └─ pages-bootstrap.js GitHub Pages 无后端时进入本地演示模式
 ├─ docs/
 │  └─ profile-rules.md  画像与 Agent 行为规则（条款编号 P-0..P-10）
