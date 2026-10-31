@@ -11,10 +11,11 @@ https://xingjian.onrender.com
 - **AI 面板**：DeepSeek 流式对话，给出建议卡片；点「采用」才真正改日程
 - **排布画像**：从你的记录里学块长、时段、缓冲，只调排布参数，不动任务与目标
 - **账号与同步**：注册、登录、改密、退出所有设备、删号；每个账号一份服务端数据
+- **外观切换**：右下角面板可切浅色 / 深色 / 跟随系统，5 种颜色主题、10 种图像主题，选择记在本机
 
 ## 本地运行
 
-静态演示：双击 `index.html`，选「本地演示模式」。
+静态演示：双击 `xingjian-agent/web/index.html`，选「本地演示模式」；GitHub Pages 也从这份文件发布。
 
 完整版（账号 + AI）：
 
@@ -29,11 +30,13 @@ python server.py
 
 | 路径 | 说明 |
 | --- | --- |
-| `index.html` | 静态版入口；GitHub Pages 发布根目录下的 html / css / js |
-| `agent.js` / `agent.css` | AI 面板 |
-| `auth.js` / `auth.css` | 登录、账号、同步 |
-| `revision.css` … `unify.js` | V0.13 设计的 11 个增量层（首页 / 目标 / 反思 / 信息卡 / 侧栏 / 工作区） |
-| `warmgrid-skin.css` | 视觉皮肤：暖纸底、墨色主操作、薰衣草/青柠强调，只改样式不改布局 |
+| `xingjian-agent/web/index.html` | **唯一前端入口**；GitHub Pages 与 Python 服务端共用这一份 |
+| `xingjian-agent/web/agent.js` / `agent.css` | AI 面板 |
+| `xingjian-agent/web/auth.js` / `auth.css` | 登录、账号、同步 |
+| `xingjian-agent/web/revision.css` … `unify.js` | V0.13 设计的 11 个增量层（首页 / 目标 / 反思 / 信息卡 / 侧栏 / 工作区） |
+| `xingjian-agent/web/warmgrid-skin.css` | 视觉皮肤：暖纸底、墨色主操作、薰衣草/青柠强调，只改样式不改布局；颜色已接到 Edge 外观 token |
+| `xingjian-agent/web/edge-theme.js` | Edge Fluent 外观运行时：浅色/深色/系统、5 色主题、10 个图像主题，右下角面板，选择存 localStorage |
+| `xingjian-agent/web/pages-bootstrap.js` | GitHub Pages 无后端时自动进入「本地演示模式」 |
 | `xingjian-agent/` | Python 后端：账号、数据、画像规则、DeepSeek 代理、部署 |
 | `calendar-rescheduler/` | 日历重排前后端设计包：拖拽/对话 Demo + 画像重排策略 |
 

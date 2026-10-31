@@ -1,8 +1,8 @@
 # Render Blueprint for the Xingjian app.
 #
-# The repository root is the static site (served by GitHub Pages). The
-# Python service lives in xingjian-agent/, so the Docker build is rooted
-# there via rootDir.
+# The static site lives in xingjian-agent/web and is published by GitHub
+# Pages. The Python service also serves that same folder; the Docker build
+# is rooted in xingjian-agent/ via rootDir.
 #
 # Free plan notes:
 #   - the instance sleeps after ~15 minutes without traffic; the first

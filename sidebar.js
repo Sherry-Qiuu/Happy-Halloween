@@ -1,3 +1,0 @@
-const sidebarToggle=$('#mainNavToggle');$('.sidebar').append(sidebarToggle);sidebarToggle.innerHTML='<span class="sidebar-collapse-arrow"><svg viewBox="0 0 22 22" aria-hidden="true"><path d="m13 5-6 6 6 6"/></svg></span><span class="sidebar-expand-mark">'+nsvg('panel')+'</span>';
-function updateSidebarToggle(){let collapsed=$('.app').classList.contains('nav-collapsed');sidebarToggle.title=collapsed?'展开侧边栏':'收起侧边栏';sidebarToggle.setAttribute('aria-label',sidebarToggle.title);sidebarToggle.setAttribute('aria-expanded',String(!collapsed));$('.sidebar .brand').title='行间';}
-const previousSidebarClick=sidebarToggle.onclick;sidebarToggle.onclick=e=>{previousSidebarClick(e);updateSidebarToggle()};updateSidebarToggle();

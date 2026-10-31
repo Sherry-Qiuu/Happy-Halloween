@@ -8,7 +8,7 @@
 2. **服务端数据**：每个账号一份 JSON 文档，保存在服务器文件夹里，换设备登录也能继续。
 3. **可部署**：纯 Python 标准库，附带 Docker、nginx、Caddy、systemd 配置。
 
-前端仍是你们原来的 `index.html`，视觉和交互没有重做；只增加了 `auth.js` / `auth.css`，
+前端统一在 `web/index.html`，视觉和交互没有重做；账号接入只增加了 `auth.js` / `auth.css`，
 并把原来的 `localStorage` 读写接到账号 API。AI 面板仍由 `agent.js` 接管。
 
 ---
@@ -31,7 +31,7 @@ python server.py
 - 离线演示 AI：`$env:AGENT_MOCK='1'; python server.py`。
 - 换端口：`$env:PORT='8080'; python server.py`。
 
-也可以双击 `index.html`：页面会提示连不上服务，并给出「先以本地演示模式打开」。
+也可以双击 `web/index.html`：页面会提示连不上服务，并给出「先以本地演示模式打开」。
 这个模式只写浏览器 `localStorage`，不创建账号、不跨设备同步。
 
 ---
@@ -166,8 +166,7 @@ server information/
 不侵入原型的目标/反思逻辑。`agent.js` 的聊天记录按账号分 key 保存，换账号不会串。
 
 **关于 `revision.css` / `examples.css` / `revision.js` / `examples.js`：**
-你们传来的包里没有这四个文件，`index.html` 里的引用保留了（缺失只会 404，主样式
-都在内联 `<style>` 里）。如果仓库里有，直接放进 `web/` 即可生效。
+这四个文件已经随 `web/` 一起提供，`index.html` 里的引用可以直接生效；`warmgrid-skin.css` 和 `edge-theme.js` 也在同一目录。
 
 ---
 
@@ -390,11 +389,13 @@ xingjian-agent/
 ├─ policy.py            输出策略：正向框架、事实不省略、危机拦截
 ├─ mock_agent.py        离线示例回复
 ├─ web/
-│  ├─ index.html        原型（接入 auth.js / auth.css）
+│  ├─ index.html        唯一前端入口（auth / agent / edge-theme / pages-bootstrap）
 │  ├─ auth.js           登录、账号管理、服务端同步
 │  ├─ auth.css          登录页、同步状态、账号弹窗样式
 │  ├─ agent.js          DeepSeek 面板桥接（按账号隔离聊天记录）
-│  └─ agent.css         AI 卡片 / 状态点 / 打字动画
+│  ├─ agent.css         AI 卡片 / 状态点 / 打字动画
+│  ├─ edge-theme.js     Edge Fluent 外观切换（浅/深/系统、5 色、10 图像）
+│  └─ pages-bootstrap.js GitHub Pages 无后端时进入本地演示模式
 ├─ docs/
 │  └─ profile-rules.md  画像与 Agent 行为规则（条款编号 P-0..P-10）
 ├─ tests/               离线测试（含 test_sched_profile.py、test_verification.py）
