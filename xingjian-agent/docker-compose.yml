@@ -1,0 +1,20 @@
+services:
+  xingjian:
+    build: .
+    image: xingjian:latest
+    container_name: xingjian
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      HOST: 0.0.0.0
+      PORT: 8000
+      XINGJIAN_DATA_DIR: /data
+    # Bind to loopback only; put nginx/Caddy in front for HTTPS.
+    # For a quick LAN test, change this to "8000:8000".
+    ports:
+      - "127.0.0.1:8000:8000"
+    volumes:
+      # The folder must be writable by uid 10001 (the app user):
+      #   mkdir -p data && sudo chown -R 10001:10001 data
+      - ./data:/data

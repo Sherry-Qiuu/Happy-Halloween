@@ -1,0 +1,26 @@
+# Secrets
+.env
+*.key
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Local data and tooling
+data/
+server information/
+.runtime-test/
+.edge-profile/
+.accounts-*/
+.http-*/
+.agent-test-*/
+.DS_Store
+Thumbs.db
+node_modules/
+login-smoke.png
+
+# Local tunnel binary (55 MB, download with start-local.ps1)
+tools/
+

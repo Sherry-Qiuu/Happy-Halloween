@@ -1,0 +1,45 @@
+# /etc/systemd/system/xingjian.service
+#
+# Bare-metal deployment (no Docker):
+#   sudo useradd --system --home /opt/xingjian --shell /usr/sbin/nologin \
+#        xingjian
+#   sudo mkdir -p /opt/xingjian /etc/xingjian
+#   sudo cp -r ./* /opt/xingjian/
+#   sudo cp .env.example /etc/xingjian/xingjian.env   # then edit it
+#   sudo chown -R xingjian:xingjian /opt/xingjian
+#   sudo systemctl daemon-reload && sudo systemctl enable --now xingjian
+#
+# The unit creates /var/lib/xingjian through StateDirectory; set
+# XINGJIAN_DATA_DIR=/var/lib/xingjian in xingjian.env.
+
+[Unit]
+Description=Xingjian planning app (accounts, data, DeepSeek agent)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=xingjian
+Group=xingjian
+WorkingDirectory=/opt/xingjian
+EnvironmentFile=/etc/xingjian/xingjian.env
+Environment=PYTHONUNBUFFERED=1
+Environment=XINGJIAN_DATA_DIR=/var/lib/xingjian
+ExecStart=/usr/bin/python3 /opt/xingjian/server.py
+Restart=on-failure
+RestartSec=3
+
+StateDirectory=xingjian
+StateDirectoryMode=0700
+UMask=0077
+
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/xingjian
+CapabilityBoundingSet=
+AmbientCapabilities=
+
+[Install]
+WantedBy=multi-user.target

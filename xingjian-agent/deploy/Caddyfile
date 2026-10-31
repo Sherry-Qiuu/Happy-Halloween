@@ -1,0 +1,16 @@
+# /etc/caddy/Caddyfile
+#
+# Replace example.com with your domain. Caddy obtains and renews the
+# TLS certificate automatically. The app is expected on 127.0.0.1:8000
+# (docker-compose.yml binds it there).
+#
+# Set COOKIE_SECURE=1 and XINGJIAN_TRUST_PROXY=1 in .env behind Caddy.
+
+example.com {
+    encode zstd gzip
+
+    reverse_proxy 127.0.0.1:8000 {
+        # Do not buffer server-sent events from the AI panel.
+        flush_interval -1
+    }
+}
