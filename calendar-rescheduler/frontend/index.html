@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>行间 · 重排实验室</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="app">
+  <aside class="sidebar">
+    <div class="brand">
+      <span class="brand-mark">行间</span>
+      <span class="brand-sub">WARMGRID</span>
+    </div>
+
+    <nav class="side-nav">
+      <span class="side-label">WORKSPACE</span>
+      <button class="side-item active" type="button"><span class="side-ico">◷</span><span>重排实验室</span></button>
+      <button class="side-item" type="button"><span class="side-ico">▦</span><span>本周日历</span></button>
+      <button class="side-item" type="button"><span class="side-ico">◎</span><span>画像设置</span></button>
+    </nav>
+
+    <div class="side-block">
+      <span class="side-label">PERSONA</span>
+      <select id="persona" aria-label="用户画像"></select>
+      <p id="personaHint" class="persona-hint"></p>
+    </div>
+
+    <div class="side-stats">
+      <div><b id="statEvents">0</b><span>事件</span></div>
+      <div><b id="statConflicts">0</b><span>冲突</span></div>
+      <div><b id="statChanges">0</b><span>本轮改动</span></div>
+    </div>
+
+    <div class="side-foot">
+      <button id="undoBtn" class="side-btn" type="button">↩ 撤销</button>
+      <button id="resetBtn" class="side-btn" type="button">重置</button>
+    </div>
+  </aside>
+
+  <main class="main">
+    <header class="topbar">
+      <div>
+        <span class="kicker">AI CALENDAR · 非官方概念演示</span>
+        <h1>拖一下，看看 AI 怎么接</h1>
+      </div>
+      <div class="top-meta">
+        <span class="pill">11/02 — 11/06</span>
+        <span class="pill live"><i></i>本地策略在线</span>
+      </div>
+    </header>
+
+    <section class="calendar-card">
+      <div class="cal-head">
+        <div>
+          <span class="kicker">WEEK VIEW</span>
+          <h2>本周安排</h2>
+          <p>拖动时间块移动 · 拖动上下边缘改变时长 · 冲突后 AI 在右侧接住</p>
+        </div>
+        <div id="calStatus" class="cal-status ok">无冲突</div>
+      </div>
+
+      <div class="week-head">
+        <div class="week-corner">时间</div>
+        <div class="week-day" data-day="0"><b>周一</b><span>11/02</span></div>
+        <div class="week-day" data-day="1"><b>周二</b><span>11/03</span></div>
+        <div class="week-day" data-day="2"><b>周三</b><span>11/04</span></div>
+        <div class="week-day" data-day="3"><b>周四</b><span>11/05</span></div>
+        <div class="week-day" data-day="4"><b>周五</b><span>11/06</span></div>
+      </div>
+
+      <div class="cal-scroll" id="calScroll">
+        <div class="calendar" id="calendar">
+          <div class="time-col" id="timeCol"></div>
+          <div class="day-col" data-day="0"></div>
+          <div class="day-col" data-day="1"></div>
+          <div class="day-col" data-day="2"></div>
+          <div class="day-col" data-day="3"></div>
+          <div class="day-col" data-day="4"></div>
+          <div id="dragTip" class="drag-tip hidden"></div>
+        </div>
+      </div>
+
+      <div class="legend">
+        <span><i class="dot meeting"></i>会议</span>
+        <span><i class="dot focus"></i>专注</span>
+        <span><i class="dot task"></i>任务</span>
+        <span><i class="dot class"></i>课程</span>
+        <span><i class="dot social"></i>社交</span>
+        <span class="legend-tip">红色条纹 = 冲突 · 拖完立刻进入 AI 协商</span>
+      </div>
+    </section>
+  </main>
+
+  <aside class="chat-panel" id="chatPanel">
+    <header class="chat-head">
+      <div class="ai-orb"><span>✦</span></div>
+      <div class="chat-title">
+        <b>行间 AI</b>
+        <small>重排协商 · <span id="roundLabel">第 0 轮</span></small>
+      </div>
+      <span class="live-dot" title="本地策略在线"></span>
+    </header>
+
+    <div class="messages" id="messages"></div>
+    <div class="typing hidden" id="typing"><i></i><i></i><i></i><span>在算代价…</span></div>
+
+    <div class="chips" id="chips">
+      <button type="button" data-chip="别动客户会">别动客户会</button>
+      <button type="button" data-chip="把专注块缩短到 45 分钟">缩短专注块</button>
+      <button type="button" data-chip="换到明天下午">换到明天下午</button>
+      <button type="button" data-chip="为什么">为什么</button>
+    </div>
+
+    <form class="composer" id="composer">
+      <input id="chatInput" autocomplete="off" placeholder="例如：别动客户会，把专注块缩短到 45 分钟" />
+      <button class="send" type="submit" aria-label="发送">↑</button>
+    </form>
+    <p class="composer-hint">拖动产生冲突后，这里会自动出现方案；你也可以继续和它谈。</p>
+  </aside>
+</div>
+
+<div id="toast" class="toast hidden" role="status"></div>
+<script src="planner.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
