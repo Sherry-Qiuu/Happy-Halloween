@@ -58,6 +58,15 @@ def _as_float(name: str, default: float) -> float:
         return default
 
 
+def _choice(name: str, default: str, allowed: tuple[str, ...]) -> str:
+    value = os.environ.get(name, "").strip().lower()
+    return value if value in allowed else default
+
+
+def _clamped_int(name: str, default: int, low: int, high: int) -> int:
+    return max(low, min(high, _as_int(name, default)))
+
+
 def _cors_origins() -> tuple[str, ...]:
     raw = os.environ.get(
         "AGENT_CORS_ORIGINS",
@@ -90,6 +99,22 @@ class Settings:
     trust_proxy: bool
     max_users: int
 
+    # Email verification (registration and password reset). The SMTP
+    # password is a QQ Mail "授权码", never the mailbox login password.
+    mail_transport: str = "smtp"
+    mail_host: str = "smtp.qq.com"
+    mail_port: int = 465
+    mail_security: str = "ssl"
+    mail_user: str = ""
+    mail_password: str = ""
+    mail_from: str = ""
+    mail_from_name: str = "行间"
+    mail_timeout: float = 20.0
+    code_ttl: int = 600
+    code_resend: int = 60
+    code_max_attempts: int = 5
+    code_max_per_hour: int = 5
+
     @property
     def configured(self) -> bool:
         """True when the service can answer real requests."""
@@ -98,6 +123,22 @@ class Settings:
     @property
     def chat_endpoint(self) -> str:
         return f"{self.base_url.rstrip('/')}/chat/completions"
+
+    @property
+    def mail_configured(self) -> bool:
+        """True when a verification code can actually be delivered.
+
+        ``console`` is a local-development transport: the code is printed
+        to the server console instead of sent, so the whole flow can be
+        tested before a QQ Mail authorization code exists.
+        """
+        if self.mail_transport == "console":
+            return True
+        return bool(self.mail_user and self.mail_password)
+
+    @property
+    def mail_sender(self) -> str:
+        return self.mail_from or self.mail_user
 
     def origin_allowed(self, origin: str) -> bool:
         if not origin:
@@ -118,6 +159,11 @@ def load_settings(env_file: Path | None = None) -> Settings:
     port = os.environ.get("PORT", "").strip() or os.environ.get(
         "AGENT_PORT", ""
     ).strip()
+    mail_user = os.environ.get("SMTP_USER", "").strip()
+    mail_password = os.environ.get("SMTP_PASSWORD", "").strip()
+    mail_port = _as_int("SMTP_PORT", 465)
+    if not 1 <= mail_port <= 65535:
+        mail_port = 465
     return Settings(
         api_key=os.environ.get("DEEPSEEK_API_KEY", "").strip(),
         base_url=os.environ.get(
@@ -147,4 +193,27 @@ def load_settings(env_file: Path | None = None) -> Settings:
         allow_registration=_as_bool("XINGJIAN_ALLOW_REGISTRATION", True),
         trust_proxy=_as_bool("XINGJIAN_TRUST_PROXY"),
         max_users=_as_int("XINGJIAN_MAX_USERS", 5_000),
+        mail_transport=_choice(
+            "MAIL_TRANSPORT", "smtp", ("smtp", "console")
+        ),
+        mail_host=os.environ.get("SMTP_HOST", "smtp.qq.com").strip()
+        or "smtp.qq.com",
+        mail_port=mail_port,
+        mail_security=_choice(
+            "MAIL_SECURITY", "ssl", ("ssl", "starttls", "plain")
+        ),
+        mail_user=mail_user,
+        mail_password=mail_password,
+        mail_from=os.environ.get("MAIL_FROM", "").strip() or mail_user,
+        mail_from_name=os.environ.get("MAIL_FROM_NAME", "行间").strip()
+        or "行间",
+        mail_timeout=_as_float("SMTP_TIMEOUT", 20.0),
+        code_ttl=_clamped_int("EMAIL_CODE_TTL", 600, 60, 3_600),
+        code_resend=_clamped_int("EMAIL_CODE_RESEND", 60, 10, 600),
+        code_max_attempts=_clamped_int(
+            "EMAIL_CODE_MAX_ATTEMPTS", 5, 3, 10
+        ),
+        code_max_per_hour=_clamped_int(
+            "EMAIL_CODE_MAX_PER_HOUR", 5, 1, 20
+        ),
     )

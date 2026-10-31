@@ -167,7 +167,17 @@ const responses = {
   me: { status: 401, body: { error: '请先登录。', code: 'unauthenticated' } },
   login: { status: 200, body: { user } },
   data: { status: 200, body: { data: null, updated_at: null } },
-  save: { status: 200, body: { updated_at: '2026-10-31T10:01:00+00:00' } }
+  save: { status: 200, body: { updated_at: '2026-10-31T10:01:00+00:00' } },
+  emailCode: {
+    status: 200,
+    body: {
+      ok: true,
+      sent: true,
+      expires_in: 600,
+      resend_in: 1,
+      message: '验证码已发送，请查收邮箱。'
+    }
+  }
 };
 
 function fakeResponse(spec) {
@@ -184,6 +194,9 @@ async function fetchStub(url) {
   const path = String(url);
   if (path.endsWith('/api/auth/me')) return fakeResponse(responses.me);
   if (path.endsWith('/api/auth/login')) return fakeResponse(responses.login);
+  if (path.endsWith('/api/auth/email-code')) {
+    return fakeResponse(responses.emailCode);
+  }
   if (path.endsWith('/api/data')) return fakeResponse(responses.data);
   throw new Error(`unexpected fetch: ${path}`);
 }
@@ -212,6 +225,8 @@ const sandbox = {
   structuredClone,
   setTimeout,
   clearTimeout,
+  setInterval,
+  clearInterval,
   seed: {
     tasks: [],
     goals: [],
@@ -272,6 +287,52 @@ check(
   'login form has a username field',
   form.innerHTML.includes('name="username"'),
   form.innerHTML.slice(0, 120)
+);
+check(
+  'login form does not ask for an email',
+  !form.innerHTML.includes('name="email"') &&
+    form.innerHTML.includes('authForgot'),
+  form.innerHTML.slice(0, 160)
+);
+
+console.log('auth.js register / reset surfaces');
+tabs[1].listeners.click[0]();
+check(
+  'register form asks for email and code',
+  form.innerHTML.includes('name="email"') &&
+    form.innerHTML.includes('name="code"') &&
+    form.innerHTML.includes('id="authSendCode"'),
+  form.innerHTML.slice(0, 200)
+);
+
+elementFor('input[name="email"]').value = 'alice@example.com';
+elementFor('#authSendCode').listeners.click[0]();
+await new Promise((resolve) => setTimeout(resolve, 30));
+check(
+  'send-code button posts and starts the countdown',
+  elementFor('#authNote').textContent.includes('验证码已发送') &&
+    elementFor('#authSendCode').textContent.includes('重新发送'),
+  `note=${elementFor('#authNote').textContent} error=${elementFor('#authError').textContent} button=${elementFor('#authSendCode').textContent}`
+);
+
+tabs[0].listeners.click[0]();
+const forgot = elementFor('#authForgot');
+forgot.listeners.click[0]();
+check(
+  'forgot-password link opens the reset form',
+  form.innerHTML.includes('重置密码') &&
+    form.innerHTML.includes('name="email"'),
+  form.innerHTML.slice(0, 160)
+);
+check('reset form hides the login/register tabs', overlay.querySelector('.authtabs').hidden === true);
+
+const back = elementFor('#authBackLogin');
+back.listeners.click[0]();
+check(
+  'reset form can return to login',
+  form.innerHTML.includes('current-password') &&
+    !form.innerHTML.includes('name="email"'),
+  form.innerHTML.slice(0, 160)
 );
 
 console.log('auth.js login');

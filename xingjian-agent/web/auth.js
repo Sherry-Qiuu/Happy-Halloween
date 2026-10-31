@@ -21,6 +21,8 @@
     me: '/api/auth/me',
     login: '/api/auth/login',
     register: '/api/auth/register',
+    emailCode: '/api/auth/email-code',
+    resetPassword: '/api/auth/password/reset',
     logout: '/api/auth/logout',
     data: '/api/data',
     account: '/api/account',
@@ -32,6 +34,7 @@
   const USER_KEY = 'xingjian-user';
   const GUEST = 'guest';
   const SAVE_DELAY = 500;
+  const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
   let currentUser = null;
   let authMode = 'login';
@@ -42,6 +45,8 @@
   let dirty = false;
   let lastSavedAt = '';
   let syncState = 'loading';
+  let codeTimer = null;
+  let codeCountdown = 0;
 
   // ------------------------------------------------------------------
   // Storage and small helpers
@@ -109,17 +114,20 @@
   }
 
   async function request(path, options) {
+    const opts = options || {};
     const init = Object.assign(
       {
         method: 'GET',
         credentials: 'same-origin',
         cache: 'no-store'
       },
-      options || {}
+      opts
     );
+    const timeoutMs = init.timeout || 15000;
+    delete init.timeout;
     const headers = Object.assign(
       { Accept: 'application/json' },
-      (options && options.headers) || {}
+      opts.headers || {}
     );
     if (init.body !== undefined && init.body !== null) {
       headers['Content-Type'] = 'application/json';
@@ -127,7 +135,7 @@
     init.headers = headers;
 
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 15000);
+    const timeout = setTimeout(() => controller.abort(), timeoutMs);
     init.signal = controller.signal;
 
     let response;
@@ -495,17 +503,16 @@
       });
     }
 
-    const note = overlay.querySelector('#authNote');
     const localButton = overlay.querySelector('#authLocal');
     if (settings.offline) {
-      note.textContent =
+      setAuthNote(
         settings.message ||
-        '无法连接服务器。你仍然可以先用本地模式体验原型。';
-      note.classList.add('offline');
+          '无法连接服务器。你仍然可以先用本地模式体验原型。',
+        true
+      );
       localButton.hidden = false;
     } else {
-      note.textContent = settings.message || '';
-      note.classList.remove('offline');
+      setAuthNote(settings.message || '');
       localButton.hidden = true;
     }
     renderAuthForm(overlay);
@@ -514,6 +521,7 @@
   }
 
   function hideAuth() {
+    resetCodeCountdown();
     const overlay = document.getElementById('xj-auth');
     if (overlay) overlay.remove();
     document.body.classList.remove('xj-locked');
@@ -522,6 +530,9 @@
   function renderAuthForm(overlay) {
     const form = overlay.querySelector('#authForm');
     const lead = overlay.querySelector('#authLead');
+    const tabs = overlay.querySelector('.authtabs');
+    resetCodeCountdown();
+    if (tabs) tabs.hidden = authMode === 'reset';
     overlay.querySelectorAll('[data-auth-tab]').forEach((tab) => {
       tab.classList.toggle(
         'active',
@@ -530,7 +541,8 @@
     });
 
     if (authMode === 'register') {
-      lead.textContent = '创建一个账号，开始记录你的计划与反思。';
+      lead.textContent =
+        '注册需要验证邮箱。验证码会发送到你的邮箱，6 位数字，10 分钟内有效。';
       form.innerHTML =
         '<label class="authfield"><span>用户名</span>' +
         '<input name="username" autocomplete="username" maxlength="32" ' +
@@ -538,6 +550,15 @@
         '<label class="authfield"><span>显示名称（可选）</span>' +
         '<input name="display_name" autocomplete="nickname" maxlength="40" ' +
         'placeholder="例如：小明"></label>' +
+        '<label class="authfield"><span>邮箱</span>' +
+        '<input name="email" type="email" autocomplete="email" maxlength="254" ' +
+        'placeholder="用于接收验证码，例如 name@example.com" required></label>' +
+        '<div class="authfield"><span>邮箱验证码</span>' +
+        '<div class="authcoderow">' +
+        '<input name="code" inputmode="numeric" autocomplete="one-time-code" ' +
+        'maxlength="6" placeholder="6 位数字" required>' +
+        '<button type="button" class="authsend" id="authSendCode">发送验证码</button>' +
+        '</div></div>' +
         '<label class="authfield"><span>密码</span>' +
         '<input name="password" type="password" autocomplete="new-password" ' +
         'minlength="8" maxlength="128" placeholder="至少 8 个字符" required>' +
@@ -547,8 +568,33 @@
         'minlength="8" maxlength="128" placeholder="再输入一次" required>' +
         '</label>' +
         '<button class="primary authsubmit" type="submit">创建账号</button>';
+    } else if (authMode === 'reset') {
+      lead.textContent =
+        '输入注册时验证的邮箱，获取验证码后设置新密码。';
+      form.innerHTML =
+        '<label class="authfield"><span>注册邮箱</span>' +
+        '<input name="email" type="email" autocomplete="email" maxlength="254" ' +
+        'placeholder="name@example.com" required></label>' +
+        '<div class="authfield"><span>邮箱验证码</span>' +
+        '<div class="authcoderow">' +
+        '<input name="code" inputmode="numeric" autocomplete="one-time-code" ' +
+        'maxlength="6" placeholder="6 位数字" required>' +
+        '<button type="button" class="authsend" id="authSendCode">发送验证码</button>' +
+        '</div></div>' +
+        '<label class="authfield"><span>新密码</span>' +
+        '<input name="password" type="password" autocomplete="new-password" ' +
+        'minlength="8" maxlength="128" placeholder="至少 8 个字符" required>' +
+        '</label>' +
+        '<label class="authfield"><span>确认新密码</span>' +
+        '<input name="confirm" type="password" autocomplete="new-password" ' +
+        'minlength="8" maxlength="128" placeholder="再输入一次" required>' +
+        '</label>' +
+        '<button class="primary authsubmit" type="submit">重置密码</button>' +
+        '<p class="authswitch"><button type="button" class="linkbutton" ' +
+        'id="authBackLogin">返回登录</button></p>';
     } else {
-      lead.textContent = '登录后继续今天的计划与反思。';
+      lead.textContent =
+        '用用户名和密码登录。邮箱只在注册验证和找回密码时使用。';
       form.innerHTML =
         '<label class="authfield"><span>用户名</span>' +
         '<input name="username" autocomplete="username" maxlength="32" ' +
@@ -556,8 +602,123 @@
         '<label class="authfield"><span>密码</span>' +
         '<input name="password" type="password" autocomplete="current-password" ' +
         'maxlength="128" placeholder="你的密码" required></label>' +
-        '<button class="primary authsubmit" type="submit">登录</button>';
+        '<button class="primary authsubmit" type="submit">登录</button>' +
+        '<p class="authswitch">' +
+        '<button type="button" class="linkbutton" id="authForgot">忘记密码？</button>' +
+        ' 用注册邮箱收验证码重置</p>';
     }
+
+    const forgot = form.querySelector('#authForgot');
+    if (forgot) {
+      forgot.addEventListener('click', () => {
+        authMode = 'reset';
+        setAuthError('');
+        setAuthNote('');
+        renderAuthForm(overlay);
+      });
+    }
+    const back = form.querySelector('#authBackLogin');
+    if (back) {
+      back.addEventListener('click', () => {
+        authMode = 'login';
+        setAuthError('');
+        setAuthNote('');
+        renderAuthForm(overlay);
+      });
+    }
+    const send = form.querySelector('#authSendCode');
+    if (send) {
+      send.addEventListener('click', () => {
+        sendEmailCode(authMode, overlay);
+      });
+    }
+  }
+
+  function sendEmailCode(purpose, overlay) {
+    if (authBusy) return;
+    const form = overlay.querySelector('#authForm');
+    const emailInput = form.querySelector('input[name="email"]');
+    const button = form.querySelector('#authSendCode');
+    const email = emailInput ? emailInput.value.trim() : '';
+    setAuthError('');
+    if (!EMAIL_RE.test(email)) {
+      setAuthError('请输入有效的邮箱地址。');
+      if (emailInput) emailInput.focus();
+      return;
+    }
+    if (button) {
+      button.disabled = true;
+      button.textContent = '发送中…';
+    }
+    const body = { email: email, purpose: purpose };
+    if (purpose === 'register') {
+      const usernameInput = form.querySelector('input[name="username"]');
+      if (usernameInput) body.username = usernameInput.value.trim();
+    }
+    request(API.emailCode, {
+      method: 'POST',
+      body: JSON.stringify(body),
+      timeout: 35000
+    })
+      .then((payload) => {
+        if (!button) return;
+        startCodeCountdown(
+          button,
+          Number(payload.resend_in) > 0 ? Number(payload.resend_in) : 60
+        );
+        setAuthNote(
+          payload.message || '验证码已发送，请查收邮箱（也看一眼垃圾邮件）。'
+        );
+        const codeInput = form.querySelector('input[name="code"]');
+        if (codeInput) codeInput.focus();
+      })
+      .catch((error) => {
+        if (button) {
+          button.disabled = false;
+          button.textContent = '发送验证码';
+        }
+        setAuthError(error.message || '验证码发送失败，请稍后再试。');
+        if (error.status === 0) {
+          setAuthNote('无法连接服务器，请确认 python server.py 正在运行。', true);
+        }
+      });
+  }
+
+  function startCodeCountdown(button, seconds) {
+    if (codeTimer) {
+      clearInterval(codeTimer);
+      codeTimer = null;
+    }
+    codeCountdown = Math.max(1, Math.min(Number(seconds) || 60, 3600));
+    button.disabled = true;
+    const paint = () => {
+      if (codeCountdown <= 0) {
+        if (codeTimer) clearInterval(codeTimer);
+        codeTimer = null;
+        button.disabled = false;
+        button.textContent = '重新发送';
+        return;
+      }
+      button.textContent = '重新发送（' + codeCountdown + 's）';
+      codeCountdown -= 1;
+    };
+    paint();
+    codeTimer = setInterval(paint, 1000);
+  }
+
+  function resetCodeCountdown() {
+    if (codeTimer) {
+      clearInterval(codeTimer);
+      codeTimer = null;
+    }
+    codeCountdown = 0;
+  }
+
+  function setAuthNote(message, offline) {
+    const note = document.getElementById('authNote');
+    if (!note) return;
+    note.textContent = message || '';
+    note.classList.toggle('offline', Boolean(offline));
   }
 
   async function submitAuth(event) {
@@ -565,16 +726,69 @@
     if (authBusy) return;
     const form = event.currentTarget;
     const formData = new FormData(form);
+    const mode = authMode;
     const username = String(formData.get('username') || '').trim();
     const password = String(formData.get('password') || '');
     const displayName = String(formData.get('display_name') || '').trim();
     const confirm = String(formData.get('confirm') || '');
+    const email = String(formData.get('email') || '').trim();
+    const code = String(formData.get('code') || '').trim();
 
     setAuthError('');
+
+    if (mode === 'reset') {
+      if (!EMAIL_RE.test(email)) {
+        return setAuthError('请输入注册时使用的邮箱。');
+      }
+      if (!/^\d{6}$/.test(code)) {
+        return setAuthError('请输入 6 位数字验证码。');
+      }
+      if (password.length < 8) {
+        return setAuthError('新密码至少需要 8 个字符。');
+      }
+      if (password !== confirm) {
+        return setAuthError('两次输入的新密码不一致。');
+      }
+      setAuthBusy(true);
+      try {
+        const payload = await request(API.resetPassword, {
+          method: 'POST',
+          body: JSON.stringify({
+            email: email,
+            code: code,
+            new_password: password
+          })
+        });
+        authMode = 'login';
+        resetCodeCountdown();
+        renderAuthForm(document.getElementById('xj-auth'));
+        setAuthNote(
+          payload.message || '密码已重置，请用新密码登录。'
+        );
+        const usernameInput = document.querySelector(
+          '#authForm input[name="username"]'
+        );
+        if (usernameInput) usernameInput.focus();
+      } catch (error) {
+        setAuthError(error.message || '密码重置失败，请稍后再试。');
+      } finally {
+        setAuthBusy(false);
+      }
+      return;
+    }
+
     if (!username) return setAuthError('请输入用户名。');
     if (password.length < 8) return setAuthError('密码至少需要 8 个字符。');
-    if (authMode === 'register' && password !== confirm) {
-      return setAuthError('两次输入的密码不一致。');
+    if (mode === 'register') {
+      if (!EMAIL_RE.test(email)) {
+        return setAuthError('请输入有效的邮箱地址，用于接收验证码。');
+      }
+      if (!/^\d{6}$/.test(code)) {
+        return setAuthError('请输入邮箱里收到的 6 位数字验证码。');
+      }
+      if (password !== confirm) {
+        return setAuthError('两次输入的密码不一致。');
+      }
     }
     if (displayName.length > 40) {
       return setAuthError('显示名称不能超过 40 个字符。');
@@ -582,10 +796,16 @@
 
     setAuthBusy(true);
     try {
-      const path = authMode === 'register' ? API.register : API.login;
+      const path = mode === 'register' ? API.register : API.login;
       const body =
-        authMode === 'register'
-          ? { username: username, password: password, display_name: displayName }
+        mode === 'register'
+          ? {
+              username: username,
+              password: password,
+              display_name: displayName,
+              email: email,
+              code: code
+            }
           : { username: username, password: password };
       const payload = await request(path, {
         method: 'POST',
@@ -599,12 +819,8 @@
     } catch (error) {
       setAuthError(error.message || '请求失败，请稍后再试。');
       if (error.status === 0) {
-        const note = document.getElementById('authNote');
+        setAuthNote('无法连接服务器，可以先用本地模式体验。', true);
         const localButton = document.getElementById('authLocal');
-        if (note) {
-          note.textContent = '无法连接服务器，可以先用本地模式体验。';
-          note.classList.add('offline');
-        }
         if (localButton) localButton.hidden = false;
       }
       setAuthBusy(false);
@@ -637,7 +853,11 @@
       ? '请稍候…'
       : authMode === 'register'
         ? '创建账号'
-        : '登录';
+        : authMode === 'reset'
+          ? '重置密码'
+          : '登录';
+    const send = form.querySelector('#authSendCode');
+    if (send) send.disabled = next || codeCountdown > 0;
   }
 
   function setAuthError(message) {
@@ -693,6 +913,13 @@
         safe(currentUser.username) +
         (joined ? ' · 注册于 ' + safe(joined) : '') +
         '</p>' +
+        (currentUser.email
+          ? '<p class="goalmeta">邮箱：' +
+            safe(currentUser.email) +
+            (currentUser.email_verified ? ' · 已验证' : ' · 未验证') +
+            '</p>'
+          : '<p class="goalmeta">未绑定邮箱：登录仍使用用户名和密码，' +
+            '但无法用邮箱找回密码。</p>') +
         '<div class="accountblock">' +
         '<label class="accountlabel">显示名称' +
         '<input id="acctDisplay" maxlength="40" value="' +

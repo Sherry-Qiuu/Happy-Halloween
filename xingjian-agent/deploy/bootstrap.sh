@@ -58,6 +58,11 @@ if [ ! -f "$ENV_FILE" ]; then
     read -r -s -p "DeepSeek API key (sk-..., leave empty for offline mode): " KEY || true
     printf '\n'
   fi
+  SMTP_CODE="${SMTP_PASSWORD:-}"
+  if [ -z "$SMTP_CODE" ] && [ -t 0 ]; then
+    read -r -s -p "QQ Mail SMTP 授权码 (3034700847@qq.com, leave empty to disable email codes): " SMTP_CODE || true
+    printf '\n'
+  fi
   umask 077
   cat > "$ENV_FILE" <<EOF
 DEEPSEEK_API_KEY=$KEY
@@ -71,6 +76,18 @@ XINGJIAN_TRUST_PROXY=1
 XINGJIAN_ALLOW_REGISTRATION=1
 AGENT_MOCK=0
 AGENT_CORS_ORIGINS=https://$DOMAIN,http://localhost,null
+MAIL_TRANSPORT=smtp
+SMTP_HOST=smtp.qq.com
+SMTP_PORT=465
+MAIL_SECURITY=ssl
+SMTP_USER=3034700847@qq.com
+SMTP_PASSWORD=$SMTP_CODE
+MAIL_FROM=3034700847@qq.com
+MAIL_FROM_NAME=行间
+EMAIL_CODE_TTL=600
+EMAIL_CODE_RESEND=60
+EMAIL_CODE_MAX_ATTEMPTS=5
+EMAIL_CODE_MAX_PER_HOUR=5
 EOF
   chmod 600 "$ENV_FILE"
 fi
@@ -90,8 +107,28 @@ set_env COOKIE_SECURE 1
 set_env XINGJIAN_TRUST_PROXY 1
 set_env AGENT_CORS_ORIGINS "https://$DOMAIN,http://localhost,null"
 
+# An .env created before email verification existed gets the SMTP defaults.
+# SMTP_PASSWORD is left untouched: it must be filled in by hand.
+if ! grep -q '^SMTP_USER=' "$ENV_FILE"; then
+  set_env MAIL_TRANSPORT smtp
+  set_env SMTP_HOST smtp.qq.com
+  set_env SMTP_PORT 465
+  set_env MAIL_SECURITY ssl
+  set_env SMTP_USER 3034700847@qq.com
+  set_env SMTP_PASSWORD ""
+  set_env MAIL_FROM 3034700847@qq.com
+  set_env MAIL_FROM_NAME 行间
+  set_env EMAIL_CODE_TTL 600
+  set_env EMAIL_CODE_RESEND 60
+  set_env EMAIL_CODE_MAX_ATTEMPTS 5
+  set_env EMAIL_CODE_MAX_PER_HOUR 5
+fi
+
 if ! grep -q '^DEEPSEEK_API_KEY=.\+' "$ENV_FILE"; then
   warn "DEEPSEEK_API_KEY is empty: the AI panel will run in offline demo mode"
+fi
+if ! grep -q '^SMTP_PASSWORD=.\+' "$ENV_FILE"; then
+  warn "SMTP_PASSWORD is empty: registration and password reset need a QQ Mail 授权码"
 fi
 
 # --- Container --------------------------------------------------------

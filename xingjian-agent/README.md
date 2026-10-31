@@ -4,6 +4,7 @@
 不自动改日程的 AI 面板。这个目录在原型之外补了三件事：
 
 1. **账号系统**：注册、登录、退出、修改显示名、修改密码、退出所有设备、删除账号。
+   注册必须绑定并验证邮箱；登录仍然只用用户名和密码；忘记密码通过邮箱验证码重置。
 2. **服务端数据**：每个账号一份 JSON 文档，保存在服务器文件夹里，换设备登录也能继续。
 3. **可部署**：纯 Python 标准库，附带 Docker、nginx、Caddy、systemd 配置。
 
@@ -22,6 +23,8 @@ python server.py
 ```
 
 打开 <http://127.0.0.1:8000>，第一次会看到登录页，点「注册」创建账号即可。
+注册需要邮箱验证码，所以先在 `.env` 里填好 `SMTP_PASSWORD`（QQ 邮箱授权码），
+或者临时设 `MAIL_TRANSPORT=console`，验证码会打印在启动终端里。
 
 - 不配 `DEEPSEEK_API_KEY` 也能用：AI 面板显示「AI 离线」，其他功能正常。
 - 想让 AI 真实回复：`Copy-Item .env.example .env`，填入 key 后重启。
@@ -65,8 +68,10 @@ server information/
 
 | 功能 | 位置 | 说明 |
 | --- | --- | --- |
-| 注册 | 登录页「注册」 | 用户名 3–32 位（字母/数字/`_` `.` `-`），密码至少 8 位 |
-| 登录 / 退出 | 登录页、右上角头像 | 会话 cookie，7 天有效 |
+| 注册 | 登录页「注册」 | 用户名 3–32 位（字母/数字/`_` `.` `-`），邮箱必须验证，密码至少 8 位 |
+| 邮箱验证码 | 注册表单、重置密码表单 | 6 位数字，10 分钟有效，60 秒后可重发，最多试 5 次 |
+| 登录 / 退出 | 登录页、右上角头像 | **登录页只有用户名和密码，不显示邮箱输入框**；会话 cookie，7 天有效 |
+| 忘记密码 | 登录页「忘记密码？」 | 用注册邮箱收验证码，验证后设置新密码；其他设备立即退出 |
 | 修改显示名 | 头像 → 账号 | 不影响登录用户名 |
 | 修改密码 | 头像 → 账号 | 需要当前密码；其他设备立即失效，当前设备保持登录 |
 | 退出所有设备 | 头像 → 账号 | 清除该账号全部会话 |
@@ -95,6 +100,39 @@ server information/
 | `XINGJIAN_ALLOW_REGISTRATION` | `1` | `0` 关闭公开注册 |
 | `XINGJIAN_MAX_USERS` | `5000` | 账号数量上限 |
 | `XINGJIAN_TRUST_PROXY` | `0` | 在 nginx/Caddy 后面改 `1`，限流才能拿到真实 IP |
+
+### 邮箱验证（QQ Mail）
+
+注册验证码和「忘记密码」都通过 SMTP 发信。发送邮箱是 **3034700847@qq.com**，
+配置只写在 **`xingjian-agent/.env`**（Docker 由 `env_file` 读入，代码里没有硬编码密码）：
+
+| 变量 | 默认值 | 说明 |
+| --- | --- | --- |
+| `MAIL_TRANSPORT` | `smtp` | `smtp` 真发信；`console` 只把验证码打印到启动终端 |
+| `SMTP_HOST` | `smtp.qq.com` | QQ 邮箱 SMTP 服务器 |
+| `SMTP_PORT` | `465` | SSL 用 465，STARTTLS 用 587 |
+| `MAIL_SECURITY` | `ssl` | `ssl` / `starttls` / `plain` |
+| `SMTP_USER` | 空 | 登录 SMTP 的完整邮箱：`3034700847@qq.com` |
+| `SMTP_PASSWORD` | 空 | **QQ 邮箱授权码**，不是邮箱登录密码；填这里 |
+| `MAIL_FROM` | 同 `SMTP_USER` | 发件人地址；QQ 要求与登录邮箱一致 |
+| `MAIL_FROM_NAME` | `行间` | 收件人看到的发件人名称 |
+| `SMTP_TIMEOUT` | `20` | 秒 |
+| `EMAIL_CODE_TTL` | `600` | 验证码有效期（秒） |
+| `EMAIL_CODE_RESEND` | `60` | 同一邮箱重发间隔（秒） |
+| `EMAIL_CODE_MAX_ATTEMPTS` | `5` | 单个验证码最多尝试次数 |
+| `EMAIL_CODE_MAX_PER_HOUR` | `5` | 同一邮箱每小时最多发几封 |
+
+**授权码怎么拿**：
+
+1. 用 3034700847@qq.com 登录 <https://mail.qq.com>。
+2. 设置 → 账户 → POP3/IMAP/SMTP/Exchange/CardDAV/CalDAV 服务。
+3. 开启「POP3/SMTP 服务」，按提示生成**授权码**。
+4. 打开 `xingjian-agent/.env`，把授权码填在 `SMTP_PASSWORD=` 后面，重启服务。
+
+`SMTP_PASSWORD` 只存在服务端，浏览器和 API 响应都拿不到。没有授权码时，
+`/api/health` 的 `email` 会是 `false`，注册页会提示「邮箱服务未配置」。
+只想本地跑通流程时，把 `MAIL_TRANSPORT` 改成 `console`，验证码会出现在运行
+`python server.py` 的终端里。
 
 ### DeepSeek（AI 面板）
 
@@ -136,11 +174,14 @@ server information/
 ## 6. API
 
 所有写接口都要求 `Content-Type: application/json`，并校验同源
-（`Origin` / `Referer` / `Sec-Fetch-Site`）。除注册、登录、健康检查外都需要会话 cookie。
+（`Origin` / `Referer` / `Sec-Fetch-Site`）。除注册、登录、发验证码、重置密码
+和健康检查外都需要会话 cookie。
 
 ```http
-POST   /api/auth/register        {username, password, display_name?}
+POST   /api/auth/email-code      {email, purpose: "register"|"reset", username?}
+POST   /api/auth/register        {username, password, display_name?, email, code}
 POST   /api/auth/login           {username, password}
+POST   /api/auth/password/reset  {email, code, new_password}
 POST   /api/auth/logout          {}
 GET    /api/auth/me              -> {user} | 401
 PATCH  /api/account              {display_name}
@@ -150,26 +191,44 @@ DELETE /api/account              {password}
 
 GET    /api/data                 -> {data, updated_at}
 PUT    /api/data                 {data}
-GET    /api/health               -> {ok, service, registration}
+GET    /api/health               -> {ok, service, registration, email}
 ```
 
-AI 接口路径不变，但 `/chat` 和 `/report` 现在也要求登录，避免匿名请求消耗
+邮箱验证码的规则：
+
+- `purpose=register` 时，`email` 不能已被注册；建议同时传 `username`，这样用户名被占用会在发码前报错。
+- `purpose=reset` 时，无论邮箱是否存在都返回同一句提示，避免被用来枚举账号；只有已注册邮箱才会真的收到信。
+- 验证码只存在内存里，服务重启后全部失效；重新获取即可。
+- 验证码绑定用途，注册码不能拿去重置密码。
+
+示例：
+
+```bash
+# 1. 发送注册验证码（本地控制台模式可在终端看到 code）
+curl -i -c cookies.txt -H 'Content-Type: application/json' \
+  -d '{"email":"alice@example.com","purpose":"register","username":"alice"}' \
+  http://127.0.0.1:8000/api/auth/email-code
+
+# 2. 用邮件里的 6 位 code 注册
+curl -i -c cookies.txt -H 'Content-Type: application/json' \
+  -d '{"username":"alice","password":"correct-horse","display_name":"Alice","email":"alice@example.com","code":"123456"}' \
+  http://127.0.0.1:8000/api/auth/register
+
+# 3. 登录仍然只用用户名和密码
+curl -i -c cookies.txt -H 'Content-Type: application/json' \
+  -d '{"username":"alice","password":"correct-horse"}' \
+  http://127.0.0.1:8000/api/auth/login
+
+curl -b cookies.txt http://127.0.0.1:8000/api/data
+```
+
+AI 接口路径不变，但 `/chat` 和 `/report` 也要求登录，避免匿名请求消耗
 DeepSeek 额度（健康检查仍公开）：
 
 ```http
 GET  /api/agent/health
 POST /api/agent/chat      -> text/event-stream   (需要登录)
 POST /api/agent/report    -> {report}            (需要登录)
-```
-
-示例：
-
-```bash
-curl -i -c cookies.txt -H 'Content-Type: application/json' \
-  -d '{"username":"alice","password":"correct-horse","display_name":"Alice"}' \
-  http://127.0.0.1:8000/api/auth/register
-
-curl -b cookies.txt http://127.0.0.1:8000/api/data
 ```
 
 ---
@@ -189,9 +248,11 @@ scp -r xingjian-agent/. root@<服务器IP>:/opt/xingjian/
 sudo bash /opt/xingjian/deploy/bootstrap.sh calhub.asia
 ```
 
-脚本会安装 Docker 与 Caddy、生成 `.env`、构建并启动容器、申请证书，最后检查
-`https://<域名>/api/health`。可重复执行；已有的 `.env` 只会更新
-`HOST` / `COOKIE_SECURE` / `XINGJIAN_TRUST_PROXY` / `AGENT_CORS_ORIGINS` 四项。
+脚本会安装 Docker 与 Caddy、生成 `.env`（会询问 DeepSeek key 和 QQ 邮箱授权码）、
+构建并启动容器、申请证书，最后检查 `https://<域名>/api/health`。可重复执行；
+已有的 `.env` 只会更新
+`HOST` / `COOKIE_SECURE` / `XINGJIAN_TRUST_PROXY` / `AGENT_CORS_ORIGINS`，
+并在缺少时补上 SMTP 默认项（不会覆盖已有的 `SMTP_PASSWORD`）。
 
 部署后从任意机器验收：
 
@@ -271,9 +332,9 @@ sudo journalctl -u xingjian -f
 ## 8. 验证
 
 ```powershell
-python -m unittest discover -s tests   # 37 个后端测试
+python -m unittest discover -s tests   # 后端测试：账号、邮箱验证、Agent、画像、策略
 node tests/dom_smoke.mjs               # 22 项 agent 前端链路
-node tests/auth_smoke.mjs              # 11 项登录/账号前端链路
+node tests/auth_smoke.mjs              # 17 项登录/注册/找回密码前端链路
 python scripts/verify_deploy.py 你的域名  # 部署后从外部检查 DNS/TLS/登录页/API
 ```
 
@@ -291,14 +352,21 @@ HTTP 全链路；前端冒烟测试用 DOM 桩跑真实 JS，不能替代浏览�
 | 启动报「数据目录不可用」 | 目录被占用/无权限；或 `accounts.json` 损坏（先备份再处理） |
 | 端口被占用 | `$env:PORT='8080'; python server.py` |
 | AI 面板显示「AI 离线」 | 没配 `DEEPSEEK_API_KEY`；或 `AGENT_MOCK=1` |
-| 忘记密码 | 目前没有邮件找回；用另一个账号，或停服后手工编辑 `accounts.json`（不推荐） |
-| 多实例部署 | 文件存储是单写者设计，不要开多个容器/worker 指向同一目录 |
+| 忘记密码 | 登录页点「忘记密码？」，用注册邮箱收验证码重置；旧账号没有邮箱时无法自助找回 |
+| 注册时提示「邮箱服务未配置」 | `.env` 的 `SMTP_PASSWORD` 为空；填 QQ 邮箱授权码后重启，或临时用 `MAIL_TRANSPORT=console` |
+| 收不到验证码 | 先看垃圾邮件；确认 `SMTP_USER`/`MAIL_FROM` 都是 3034700847@qq.com，且 QQ 邮箱已开启 SMTP 服务 |
+| 发信报 535 / 授权码无效 | `SMTP_PASSWORD` 填的是 QQ 登录密码，不是授权码；重新生成授权码 |
+| 重启服务后旧验证码不能用 | 验证码只在内存里，重启即失效；重新点「发送验证码」 |
+| 登录页找不到邮箱输入框 | 这是有意的：登录只用用户名 + 密码，邮箱只用于注册验证和找回密码 |
+| 多实例部署 | 文件存储和验证码都是单写者设计，不要开多个容器/worker 指向同一目录 |
 
 ---
 
 ## 10. 已知边界
 
-- 没有邮箱验证、找回密码、OAuth、管理员后台；账号是自服务模型。
+- 没有 OAuth、管理员后台；账号是自服务模型。邮箱验证和找回密码已经支持。
+- 邮箱验证码存在内存里，只适合单进程部署；多实例需要换成 Redis 或数据库。
+- 旧账号（升级前创建、没有 `email` 字段）仍可用用户名密码登录，但暂时不能自助找回密码；重新注册一个新账号即可。
 - 文件存储适合演示、小团队内测；要扛并发请换数据库，并把 `AccountStore` 抽成接口。
 - 数据保存是后写覆盖，不做字段级合并。
 - AI 对话仍存在浏览器（按账号分 key），不跨设备同步；只有计划/反思数据在服务器。
@@ -310,8 +378,10 @@ HTTP 全链路；前端冒烟测试用 DOM 桩跑真实 JS，不能替代浏览�
 
 ```text
 xingjian-agent/
-├─ server.py            HTTP 服务：静态托管 + 账号/数据 API + agent 代理
-├─ accounts.py          账号、会话、PBKDF2、按用户数据文件
+├─ server.py            HTTP 服务：静态托管 + 账号/邮箱验证 API + agent 代理
+├─ accounts.py          账号、会话、PBKDF2、邮箱唯一性、按用户数据文件
+├─ mailer.py            QQ Mail SMTP 发信 + 控制台验证码模式
+├─ verification.py      6 位验证码：哈希存储、有效期、重发间隔、尝试次数
 ├─ config.py            .env / 环境变量
 ├─ deepseek.py          DeepSeek 流式客户端 + 正文/提案分离器
 ├─ protocol.py          SSE 编码 + 提案白名单校验
@@ -327,7 +397,7 @@ xingjian-agent/
 │  └─ agent.css         AI 卡片 / 状态点 / 打字动画
 ├─ docs/
 │  └─ profile-rules.md  画像与 Agent 行为规则（条款编号 P-0..P-10）
-├─ tests/               离线测试（含 test_sched_profile.py）
+├─ tests/               离线测试（含 test_sched_profile.py、test_verification.py）
 ├─ scripts/
 │  ├─ verify_deploy.py  部署后从外部检查 DNS / TLS / 登录页 / API
 │  └─ profile_demo.py   七轮对话演示：画像如何被写入、拒绝、漂移

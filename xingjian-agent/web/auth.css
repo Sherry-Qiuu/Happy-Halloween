@@ -193,6 +193,68 @@ body.xj-locked .app {
   min-height: 44px;
 }
 
+.authcoderow {
+  display: flex;
+  gap: 8px;
+  align-items: stretch;
+}
+
+.authcoderow input {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.authsend {
+  flex: 0 0 auto;
+  min-height: 44px;
+  padding: 0 12px;
+  font-size: 12px;
+  white-space: nowrap;
+  color: var(--green);
+  border-color: #cfe1d6;
+  background: #f4faf6;
+}
+
+.authsend:hover {
+  background: #eaf2ed;
+}
+
+.authsend:disabled {
+  opacity: 0.65;
+  cursor: wait;
+}
+
+.authswitch {
+  margin-top: 14px;
+  font-size: 12px;
+  color: var(--muted);
+  text-align: right;
+}
+
+button.linkbutton {
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--green);
+  font-size: 12px;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+button.linkbutton:hover {
+  background: transparent;
+  color: #244c3d;
+}
+
+.authtabs[hidden] {
+  display: none;
+}
+
+.authnote {
+  word-break: break-word;
+}
+
 .authsubmit {
   width: 100%;
   min-height: 44px;
@@ -354,6 +416,14 @@ button.danger:disabled {
   .authcard {
     padding: 22px 18px;
     border-radius: 16px;
+  }
+
+  .authcoderow {
+    flex-wrap: wrap;
+  }
+
+  .authsend {
+    width: 100%;
   }
 
   #xj-auth {

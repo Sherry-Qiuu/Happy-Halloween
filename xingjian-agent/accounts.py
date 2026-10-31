@@ -40,6 +40,12 @@ SESSION_COOKIE = "xj_session"
 
 USERNAME_RE = re.compile(r"^[a-z0-9][a-z0-9_.-]{2,31}$")
 USER_ID_RE = re.compile(r"^u_[0-9a-f]{16}$")
+EMAIL_RE = re.compile(
+    r"^[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+@"
+    r"[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?"
+    r"(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)+$"
+)
+MAX_EMAIL = 254
 
 _dummy_hash: str | None = None
 
@@ -117,6 +123,31 @@ def validate_username(value: Any) -> str:
     return username
 
 
+def validate_email(value: Any) -> str:
+    """Normalize an email address used for verification and recovery."""
+    if not isinstance(value, str):
+        raise AccountError("请输入邮箱地址。", code="email_invalid")
+    email = value.strip().lower()
+    if not email:
+        raise AccountError("请输入邮箱地址。", code="email_invalid")
+    if len(email) > MAX_EMAIL:
+        raise AccountError("邮箱地址过长。", code="email_invalid")
+    local, _, domain = email.partition("@")
+    if (
+        not EMAIL_RE.match(email)
+        or len(local) > 64
+        or local.startswith(".")
+        or local.endswith(".")
+        or ".." in local
+        or ".." in domain
+    ):
+        raise AccountError(
+            "邮箱格式不正确，请输入例如 name@example.com。",
+            code="email_invalid",
+        )
+    return email
+
+
 def validate_password(value: Any, label: str = "密码") -> str:
     if not isinstance(value, str):
         raise AccountError(f"{label}格式不正确。", code="password_invalid")
@@ -152,6 +183,8 @@ def _public_user(record: dict[str, Any]) -> dict[str, Any]:
         "id": record["id"],
         "username": record["username"],
         "display_name": record["display_name"],
+        "email": record.get("email") or "",
+        "email_verified": bool(record.get("email_verified")),
         "created_at": _iso(record.get("created_at")),
         "updated_at": _iso(record.get("updated_at")),
     }
@@ -311,6 +344,50 @@ class AccountStore:
                 return record
         return None
 
+    def _find_by_email(self, email: str) -> dict[str, Any] | None:
+        for record in self._accounts:
+            if record.get("email") == email:
+                return record
+        return None
+
+    def find_by_email(self, email: Any) -> dict[str, Any] | None:
+        """Return the public user owning *email*, if any."""
+        normalized = validate_email(email)
+        with self._lock:
+            record = self._find_by_email(normalized)
+            return _public_user(record) if record else None
+
+    def email_exists(self, email: Any) -> bool:
+        normalized = validate_email(email)
+        with self._lock:
+            return self._find_by_email(normalized) is not None
+
+    def ensure_registration_available(
+        self, username: Any, email: Any
+    ) -> tuple[str, str]:
+        """Validate a username/email pair before an email code is sent.
+
+        Doing this check twice (before sending and inside
+        :meth:`create_user`) keeps a taken name from consuming a code
+        while still making the final write atomic.
+        """
+        username = validate_username(username)
+        email = validate_email(email)
+        with self._lock:
+            if self._find_by_username(username) is not None:
+                raise AccountError(
+                    "这个用户名已经被注册。",
+                    status=409,
+                    code="username_taken",
+                )
+            if self._find_by_email(email) is not None:
+                raise AccountError(
+                    "这个邮箱已经注册过账号，请直接登录或找回密码。",
+                    status=409,
+                    code="email_taken",
+                )
+        return username, email
+
     @property
     def user_count(self) -> int:
         with self._lock:
@@ -322,17 +399,29 @@ class AccountStore:
         password: Any,
         display_name: Any = None,
         *,
+        email: Any = None,
+        email_verified: bool = False,
         ip: str = "",
     ) -> dict[str, Any]:
         username = validate_username(username)
         password = validate_password(password)
         name = validate_display_name(display_name, username)
+        normalized_email = validate_email(email) if email is not None else None
         with self._lock:
             if self._find_by_username(username) is not None:
                 raise AccountError(
                     "这个用户名已经被注册。",
                     status=409,
                     code="username_taken",
+                )
+            if (
+                normalized_email is not None
+                and self._find_by_email(normalized_email) is not None
+            ):
+                raise AccountError(
+                    "这个邮箱已经注册过账号，请直接登录或找回密码。",
+                    status=409,
+                    code="email_taken",
                 )
             if len(self._accounts) >= self.max_users:
                 raise AccountError(
@@ -350,6 +439,9 @@ class AccountStore:
                 "created_at": now,
                 "updated_at": now,
             }
+            if normalized_email is not None:
+                record["email"] = normalized_email
+                record["email_verified"] = bool(email_verified)
             self._accounts.append(record)
             self._save_accounts()
             self._audit(
@@ -468,6 +560,34 @@ class AccountStore:
             self._audit(
                 "password_changed",
                 user_id=user_id,
+                username=record["username"],
+                ip=ip,
+            )
+
+    def reset_password_by_email(
+        self, email: Any, new_password: Any, *, ip: str = ""
+    ) -> None:
+        """Set a new password after the email code has been verified."""
+        normalized = validate_email(email)
+        new_password = validate_password(new_password, "新密码")
+        with self._lock:
+            record = self._find_by_email(normalized)
+            if record is None:
+                raise AccountError(
+                    "这个邮箱没有对应的账号。",
+                    status=404,
+                    code="email_unknown",
+                )
+            record["password_hash"] = _hash_password(new_password)
+            record["session_version"] = int(
+                record.get("session_version", 1)
+            ) + 1
+            record["updated_at"] = _now()
+            self._save_accounts()
+            self._revoke_all_locked(record["id"])
+            self._audit(
+                "password_reset",
+                user_id=record["id"],
                 username=record["username"],
                 ip=ip,
             )

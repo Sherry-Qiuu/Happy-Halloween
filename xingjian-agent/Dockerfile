@@ -12,7 +12,8 @@ WORKDIR /app
 # No third-party dependencies: accounts, the API, and the static files
 # all run on the Python standard library.
 COPY accounts.py config.py prompts.py protocol.py deepseek.py \
-     mock_agent.py server.py ./
+     mock_agent.py policy.py sched_profile.py mailer.py verification.py \
+     server.py ./
 COPY web ./web
 
 RUN useradd --create-home --uid 10001 --shell /usr/sbin/nologin app \

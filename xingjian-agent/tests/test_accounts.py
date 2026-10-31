@@ -48,13 +48,53 @@ class AccountStoreTests(unittest.TestCase):
         shutil.rmtree(self.temp, ignore_errors=True)
 
     def test_register_and_authenticate(self) -> None:
-        user = self.store.create_user("Alice", "correct-horse", "Alice")
+        user = self.store.create_user(
+            "Alice", "correct-horse", "Alice", email="alice@example.com"
+        )
         self.assertEqual(user["username"], "alice")
         self.assertEqual(user["display_name"], "Alice")
+        self.assertEqual(user["email"], "alice@example.com")
+        self.assertTrue(user["email_verified"] is False)
         self.assertNotIn("password_hash", user)
 
         found = self.store.authenticate("ALICE", "correct-horse")
         self.assertEqual(found["id"], user["id"])
+
+    def test_email_is_normalized_and_unique(self) -> None:
+        self.store.create_user(
+            "alice", "correct-horse", email="Alice@Example.COM"
+        )
+        record = self.store.find_by_email("alice@example.com")
+        self.assertEqual(record["username"], "alice")
+        with self.assertRaises(accounts.AccountError) as taken:
+            self.store.create_user(
+                "bob", "correct-horse", email="ALICE@example.com"
+            )
+        self.assertEqual(taken.exception.status, 409)
+        self.assertEqual(taken.exception.code, "email_taken")
+
+        for invalid in ("not-an-email", "a@b", "@example.com", "a..b@x.com"):
+            with self.assertRaises(accounts.AccountError):
+                accounts.validate_email(invalid)
+
+    def test_password_reset_by_email(self) -> None:
+        user = self.store.create_user(
+            "alice",
+            "correct-horse",
+            email="alice@example.com",
+            email_verified=True,
+        )
+        token = self.store.create_session(user["id"])
+        self.store.reset_password_by_email(
+            "ALICE@example.com", "new-correct-horse"
+        )
+        self.assertIsNone(self.store.resolve_session(token))
+        with self.assertRaises(accounts.AccountError):
+            self.store.authenticate("alice", "correct-horse")
+        self.assertEqual(
+            self.store.authenticate("alice", "new-correct-horse")["id"],
+            user["id"],
+        )
 
     def test_duplicate_and_weak_credentials_are_rejected(self) -> None:
         self.store.create_user("alice", "correct-horse")
@@ -139,6 +179,20 @@ class AccountStoreTests(unittest.TestCase):
         self.assertEqual(too_big.exception.status, 413)
 
 
+class FakeMailer:
+    """Capture verification codes instead of talking to SMTP."""
+
+    def __init__(self) -> None:
+        self.sent: dict[tuple[str, str], str] = {}
+
+    @property
+    def configured(self) -> bool:
+        return True
+
+    def send_code(self, to_email: str, code: str, purpose: str) -> None:
+        self.sent[(to_email, purpose)] = code
+
+
 class HttpAuthTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
@@ -155,7 +209,22 @@ class HttpAuthTests(unittest.TestCase):
             session_days=7,
             max_users=100,
         )
-        cls.httpd = server.create_server(settings)
+        cls.mailer = FakeMailer()
+        cls.httpd = server.create_server(settings, mailer=cls.mailer)
+        # This suite is not about rate limiting; let its many requests
+        # through so the functional assertions stay readable.
+        for name in (
+            "register_ip",
+            "login_ip",
+            "login_user",
+            "email_code_ip",
+            "reset_ip",
+        ):
+            setattr(
+                cls.httpd,
+                name,
+                server.RateLimiter(10_000, server.AUTH_WINDOW),
+            )
         cls.port = cls.httpd.server_address[1]
         cls.thread = threading.Thread(
             target=cls.httpd.serve_forever, daemon=True
@@ -203,17 +272,40 @@ class HttpAuthTests(unittest.TestCase):
             body = error.read().decode("utf-8")
             return error.code, json.loads(body or "{}")
 
+    def request_code(
+        self,
+        email: str,
+        purpose: str = "register",
+        username: str | None = None,
+    ) -> str:
+        payload: dict = {"email": email, "purpose": purpose}
+        if username:
+            payload["username"] = username
+        status, body = self.call("POST", "/api/auth/email-code", payload)
+        self.assertEqual(status, 200, body)
+        self.assertTrue(body["sent"])
+        key = (email.strip().lower(), purpose)
+        self.assertIn(key, self.mailer.sent, body)
+        return self.mailer.sent[key]
+
     def register(self, username: str | None = None) -> dict:
+        username = username or self.username
+        email = f"{username}@example.com"
+        code = self.request_code(email, "register", username)
         status, body = self.call(
             "POST",
             "/api/auth/register",
             {
-                "username": username or self.username,
+                "username": username,
                 "password": "correct-horse",
                 "display_name": "Alice",
+                "email": email,
+                "code": code,
             },
         )
         self.assertEqual(status, 201, body)
+        self.assertEqual(body["user"]["email"], email)
+        self.assertTrue(body["user"]["email_verified"])
         return body["user"]
 
     def test_health(self) -> None:
@@ -308,6 +400,113 @@ class HttpAuthTests(unittest.TestCase):
         )
         self.assertEqual(status, 403)
         self.assertEqual(body["code"], "origin_denied")
+
+    def test_register_requires_email_and_code(self) -> None:
+        status, body = self.call(
+            "POST",
+            "/api/auth/register",
+            {"username": self.username, "password": "correct-horse"},
+        )
+        self.assertEqual(status, 400, body)
+        self.assertEqual(body["code"], "email_invalid")
+
+        email = f"{self.username}@example.com"
+        status, body = self.call(
+            "POST",
+            "/api/auth/register",
+            {
+                "username": self.username,
+                "password": "correct-horse",
+                "email": email,
+                "code": "123456",
+            },
+        )
+        self.assertEqual(status, 400, body)
+        self.assertEqual(body["code"], "code_expired")
+
+    def test_duplicate_email_is_rejected(self) -> None:
+        user = self.register()
+        status, body = self.call(
+            "POST",
+            "/api/auth/email-code",
+            {
+                "email": user["email"],
+                "purpose": "register",
+                "username": "other_" + uuid.uuid4().hex[:6],
+            },
+        )
+        self.assertEqual(status, 409, body)
+        self.assertEqual(body["code"], "email_taken")
+
+    def test_wrong_code_is_rejected_then_correct_code_works(self) -> None:
+        email = f"{self.username}@example.com"
+        code = self.request_code(email, "register", self.username)
+        wrong = "000000" if code != "000000" else "111111"
+        status, body = self.call(
+            "POST",
+            "/api/auth/register",
+            {
+                "username": self.username,
+                "password": "correct-horse",
+                "email": email,
+                "code": wrong,
+            },
+        )
+        self.assertEqual(status, 400, body)
+        self.assertEqual(body["code"], "code_mismatch")
+
+        status, body = self.call(
+            "POST",
+            "/api/auth/register",
+            {
+                "username": self.username,
+                "password": "correct-horse",
+                "email": email,
+                "code": code,
+            },
+        )
+        self.assertEqual(status, 201, body)
+
+    def test_password_reset_flow(self) -> None:
+        user = self.register()
+        self.call("POST", "/api/auth/logout", {})
+        code = self.request_code(user["email"], "reset")
+        status, body = self.call(
+            "POST",
+            "/api/auth/password/reset",
+            {
+                "email": user["email"],
+                "code": code,
+                "new_password": "new-correct-horse",
+            },
+        )
+        self.assertEqual(status, 200, body)
+
+        self.jar.clear()
+        status, _ = self.call(
+            "POST",
+            "/api/auth/login",
+            {"username": self.username, "password": "correct-horse"},
+        )
+        self.assertEqual(status, 401)
+        status, body = self.call(
+            "POST",
+            "/api/auth/login",
+            {"username": self.username, "password": "new-correct-horse"},
+        )
+        self.assertEqual(status, 200, body)
+        self.assertEqual(body["user"]["id"], user["id"])
+
+    def test_reset_for_unknown_email_is_generic(self) -> None:
+        email = "nobody_" + uuid.uuid4().hex[:8] + "@example.com"
+        status, body = self.call(
+            "POST",
+            "/api/auth/email-code",
+            {"email": email, "purpose": "reset"},
+        )
+        self.assertEqual(status, 200, body)
+        self.assertTrue(body["sent"])
+        self.assertNotIn((email, "reset"), self.mailer.sent)
 
     def test_delete_account(self) -> None:
         self.register()

@@ -10,8 +10,10 @@ Pages
     GET  /                     the prototype
 
 Accounts
-    POST /api/auth/register    create an account and start a session
-    POST /api/auth/login       sign in
+    POST /api/auth/email-code  send a registration or reset code
+    POST /api/auth/register    create an account (email code required)
+    POST /api/auth/password/reset  set a new password with an email code
+    POST /api/auth/login       sign in with username + password
     POST /api/auth/logout      clear the current session
     GET  /api/auth/me          current user or 401
     PATCH /api/account         rename the display name
@@ -56,10 +58,16 @@ from accounts import (
     AccountError,
     AccountStore,
     StorageError,
+    validate_display_name,
+    validate_email,
+    validate_password,
+    validate_username,
 )
 from config import Settings, load_settings
+from mailer import MailError, Mailer
 from prompts import chat_messages, report_messages
 from protocol import sse
+from verification import CodeError, VerificationStore
 
 MAX_BODY = 64 * 1024
 MAX_AUTH_BODY = 16 * 1024
@@ -73,6 +81,8 @@ REPLAY_DELAY = 0.012  # seconds between replayed chunks of a sanitized reply
 LOGIN_IP_LIMIT = 30
 LOGIN_USER_LIMIT = 20
 REGISTER_IP_LIMIT = 5
+EMAIL_CODE_IP_LIMIT = 10
+RESET_IP_LIMIT = 10
 AUTH_WINDOW = 15 * 60
 
 MIME_TYPES = {
@@ -131,7 +141,13 @@ class AgentServer(ThreadingHTTPServer):
     daemon_threads = True
     allow_reuse_address = True
 
-    def __init__(self, settings: Settings) -> None:
+    def __init__(
+        self,
+        settings: Settings,
+        *,
+        mailer: Mailer | None = None,
+        verifier: VerificationStore | None = None,
+    ) -> None:
         self.settings = settings
         self.limiter = RateLimiter(settings.rate_limit)
         self.accounts = AccountStore(
@@ -139,9 +155,18 @@ class AgentServer(ThreadingHTTPServer):
             session_days=settings.session_days,
             max_users=settings.max_users,
         )
+        self.mailer = mailer or Mailer(settings)
+        self.verifier = verifier or VerificationStore(
+            ttl_seconds=settings.code_ttl,
+            resend_seconds=settings.code_resend,
+            max_attempts=settings.code_max_attempts,
+            max_per_hour=settings.code_max_per_hour,
+        )
         self.login_ip = RateLimiter(LOGIN_IP_LIMIT, AUTH_WINDOW)
         self.login_user = RateLimiter(LOGIN_USER_LIMIT, AUTH_WINDOW)
         self.register_ip = RateLimiter(REGISTER_IP_LIMIT, AUTH_WINDOW)
+        self.email_code_ip = RateLimiter(EMAIL_CODE_IP_LIMIT, AUTH_WINDOW)
+        self.reset_ip = RateLimiter(RESET_IP_LIMIT, AUTH_WINDOW)
         self.mock_context = "home"
         super().__init__((settings.host, settings.port), AgentHandler)
 
@@ -188,6 +213,8 @@ class AgentHandler(BaseHTTPRequestHandler):
             "/api/auth/register": self._handle_register,
             "/api/auth/login": self._handle_login,
             "/api/auth/logout": self._handle_logout,
+            "/api/auth/email-code": self._handle_email_code,
+            "/api/auth/password/reset": self._handle_reset_password,
             "/api/account/password": self._handle_change_password,
             "/api/account/logout-all": self._handle_logout_all,
         }
@@ -448,6 +475,114 @@ class AgentHandler(BaseHTTPRequestHandler):
                 "ok": True,
                 "service": "xingjian",
                 "registration": settings.allow_registration,
+                "email": settings.mail_configured,
+            },
+        )
+
+    def _consume_code(
+        self, email: str, purpose: str, code: Any
+    ) -> None:
+        try:
+            self.server.verifier.verify(email, purpose, code)
+        except CodeError as error:
+            raise AccountError(
+                error.message, status=error.status, code=error.code
+            )
+
+    def _issue_and_send_code(self, email: str, purpose: str) -> None:
+        try:
+            code = self.server.verifier.issue(email, purpose)
+        except CodeError as error:
+            raise AccountError(
+                error.message, status=error.status, code=error.code
+            )
+        try:
+            self.server.mailer.send_code(email, code, purpose)
+        except MailError as error:
+            # A failed delivery must not leave the user in a 60-second
+            # cooldown, so the reservation is rolled back.
+            self.server.verifier.release(email, purpose)
+            raise AccountError(
+                error.message, status=error.status, code=error.code
+            )
+
+    def _handle_email_code(self) -> None:
+        settings = self.server.settings
+        ip = self._client_ip()
+        if not self.server.email_code_ip.allow(ip):
+            raise AccountError(
+                "请求过于频繁，请稍后再试。",
+                status=429,
+                code="rate_limited",
+            )
+        payload = self._read_json(MAX_AUTH_BODY)
+        purpose = payload.get("purpose")
+        if purpose not in ("register", "reset"):
+            raise AccountError(
+                "验证码用途不正确。", code="purpose_invalid"
+            )
+        email = validate_email(payload.get("email"))
+        base = {
+            "ok": True,
+            "sent": True,
+            "expires_in": settings.code_ttl,
+            "resend_in": settings.code_resend,
+        }
+
+        if purpose == "register":
+            username = payload.get("username")
+            if username:
+                self.server.accounts.ensure_registration_available(
+                    username, email
+                )
+            elif self.server.accounts.email_exists(email):
+                raise AccountError(
+                    "这个邮箱已经注册过账号，请直接登录或找回密码。",
+                    status=409,
+                    code="email_taken",
+                )
+            self._issue_and_send_code(email, "register")
+            self._send_json(
+                HTTPStatus.OK,
+                {
+                    **base,
+                    "message": "验证码已发送，请查收邮箱（也看一眼垃圾邮件）。",
+                },
+            )
+            return
+
+        # Password reset must not reveal whether an address is registered:
+        # an unknown address gets the same response, but no mail is sent.
+        account = self.server.accounts.find_by_email(email)
+        if account is None:
+            self._send_json(
+                HTTPStatus.OK,
+                {
+                    **base,
+                    "message": "如果这个邮箱已注册，验证码会在几分钟内送达。",
+                },
+            )
+            return
+        try:
+            self._issue_and_send_code(email, "reset")
+        except AccountError as error:
+            if error.status == 429:
+                # Cooldown / hourly cap: answer exactly like a success so
+                # the endpoint cannot be used to enumerate accounts.
+                self._send_json(
+                    HTTPStatus.OK,
+                    {
+                        **base,
+                        "message": "如果这个邮箱已注册，验证码会在几分钟内送达。",
+                    },
+                )
+                return
+            raise
+        self._send_json(
+            HTTPStatus.OK,
+            {
+                **base,
+                "message": "如果这个邮箱已注册，验证码会在几分钟内送达。",
             },
         )
 
@@ -466,10 +601,28 @@ class AgentHandler(BaseHTTPRequestHandler):
                 code="rate_limited",
             )
         payload = self._read_json(MAX_AUTH_BODY)
+        username = validate_username(payload.get("username"))
+        password = validate_password(payload.get("password"))
+        display_name = validate_display_name(
+            payload.get("display_name"), username
+        )
+        email = validate_email(payload.get("email"))
+        self.server.accounts.ensure_registration_available(
+            username, email
+        )
+        if self.server.accounts.user_count >= self.server.settings.max_users:
+            raise AccountError(
+                "账号数量已达到上限，请联系管理员。",
+                status=507,
+                code="user_limit",
+            )
+        self._consume_code(email, "register", payload.get("code"))
         user = self.server.accounts.create_user(
-            payload.get("username"),
-            payload.get("password"),
-            payload.get("display_name"),
+            username,
+            password,
+            display_name,
+            email=email,
+            email_verified=True,
             ip=ip,
         )
         token = self.server.accounts.create_session(user["id"])
@@ -477,6 +630,28 @@ class AgentHandler(BaseHTTPRequestHandler):
             HTTPStatus.CREATED,
             {"user": user},
             {"Set-Cookie": self._cookie(token)},
+        )
+
+    def _handle_reset_password(self) -> None:
+        ip = self._client_ip()
+        if not self.server.reset_ip.allow(ip):
+            raise AccountError(
+                "尝试次数过多，请 15 分钟后再试。",
+                status=429,
+                code="rate_limited",
+            )
+        payload = self._read_json(MAX_AUTH_BODY)
+        email = validate_email(payload.get("email"))
+        new_password = validate_password(
+            payload.get("new_password"), "新密码"
+        )
+        self._consume_code(email, "reset", payload.get("code"))
+        self.server.accounts.reset_password_by_email(
+            email, new_password, ip=ip
+        )
+        self._send_json(
+            HTTPStatus.OK,
+            {"ok": True, "message": "密码已重置，请用新密码登录。"},
         )
 
     def _handle_login(self) -> None:
@@ -970,8 +1145,13 @@ def _mock_report(question: str, state: dict[str, Any]) -> str:
     )
 
 
-def create_server(settings: Settings) -> AgentServer:
-    return AgentServer(settings)
+def create_server(
+    settings: Settings,
+    *,
+    mailer: Mailer | None = None,
+    verifier: VerificationStore | None = None,
+) -> AgentServer:
+    return AgentServer(settings, mailer=mailer, verifier=verifier)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -990,6 +1170,18 @@ def main(argv: list[str] | None = None) -> int:
         "[agent] 注册："
         + ("开放" if settings.allow_registration else "关闭")
     )
+    if settings.mail_configured:
+        where = (
+            "控制台（MAIL_TRANSPORT=console）"
+            if settings.mail_transport == "console"
+            else f"{settings.mail_host}:{settings.mail_port}"
+        )
+        print(f"[agent] 邮箱验证码：已配置 · {where}")
+    else:
+        print(
+            "[agent] 邮箱验证码：未配置 SMTP_PASSWORD，"
+            "注册和找回密码会提示邮箱服务不可用"
+        )
     index = settings.web_dir / "index.html"
     if not index.is_file():
         print(f"[agent] 找不到前端文件：{index}")
