@@ -11,12 +11,12 @@
 ## 跑起来
 
 ```bash
-cd rescheduler
+cd calendar-rescheduler/backend
 python core.py                 # 单场景（含呼吸块）
 python persona_cases.py        # 同一冲突 × 五种画像
 python evaluate.py             # 12 画像 × 80 中断
 python breathing_eval.py       # 有/无呼吸层对比
-python -m unittest -v test_strategy.py
+python -m unittest -v test_strategy
 ```
 
 ## 最小调用

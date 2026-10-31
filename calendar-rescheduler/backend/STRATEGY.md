@@ -371,12 +371,12 @@ return {"summary": proposal.summary, "changes": changes, ...}
 ## 10 复现
 
 ```bash
-cd rescheduler
+cd calendar-rescheduler/backend
 python core.py                 # 单场景 demo（含呼吸块）
 python persona_cases.py        # 同一冲突 × 五种画像
 python evaluate.py             # 12 画像 × 80 中断基准
 python breathing_eval.py       # 有/无呼吸层对比
-python -m unittest -v test_strategy.py
+python -m unittest -v test_strategy
 ```
 
 输出：`out_benchmark.json`（p50/p95、改动、目标、接受率、期望值、协议兼容率）、`out_breathing.json`（留白、呼吸、负载、休息损失）。

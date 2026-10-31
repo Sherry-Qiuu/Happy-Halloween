@@ -1,0 +1,17 @@
+# 本地运行数据：账号、会话、审计日志与每个账号的数据文件
+/server information/
+/data/
+
+# 密钥与本地配置
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# 系统与编辑器
+.DS_Store
+Thumbs.db
+node_modules/
