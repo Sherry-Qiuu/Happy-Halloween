@@ -366,8 +366,8 @@ xingjian-agent/
 | 规则 | 位置 | 做法 |
 | --- | --- | --- |
 | 禁 emoji、感叹号 | `policy.apply()` | 直接删/替换 |
-| 鸡汤、冷话、比较式安慰、否定感受、伪造低评价 | `policy.apply()` | 整句丢弃 |
-| **但句子带数字就保留** | `policy.apply()` | 事实优先于语气，只记违规 |
+| 鸡汤、冷话、比较式安慰、否定感受、伪造低评价 | `policy.apply()` | 按**分句**丢弃，不改写原句 |
+| **带数字的分句永远保留** | `policy.apply()` | 事实优先于语气，只记违规 |
 | 正文 ≤3 句 | `policy.apply(max_sentences=3)` | 截断；反思报告传 `None` 不受限 |
 | 想一套说一套 | `policy.validate_draft()` | `draft` 里的 `predicted`/`risk` 只落日志，永不出现在正文 |
 | 事实不可省略 | `policy.missing_facts()` + `append_missing()` | 草稿承诺的数字没出现，补一行中性「记录：…」，不改写原句 |

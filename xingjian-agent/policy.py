@@ -96,6 +96,7 @@ BANNED: tuple[tuple[str, str], ...] = (
 )
 
 _SENTENCE_SPLIT = re.compile(r"[。！？!?；;\n]+")
+_CLAUSE_SPLIT = re.compile(r"[，,、]")
 _HAS_DIGIT = re.compile(r"\d")
 
 _EMOJI_RANGES = ((0x1F300, 0x1FAFF), (0x2600, 0x27BF), (0x1F000, 0x1F0FF))
@@ -157,29 +158,51 @@ def apply(
         violations.append({"rule": "exclamation"})
         cleaned = cleaned.replace("！", "。").replace("!", "。")
 
-    sentences = _split(cleaned)
-    kept: list[str] = []
-    for sentence in sentences:
-        hit = next((rule for needle, rule in BANNED if needle in sentence), None)
-        if hit is None:
-            kept.append(sentence)
-            continue
-        if _carries_fact(sentence):
-            # A fact outranks a tone rule: keep it, record the smell.
-            violations.append(
-                {"rule": hit, "sentence": sentence, "kept": "carries_fact"}
-            )
-            kept.append(sentence)
-        else:
-            violations.append({"rule": hit, "sentence": sentence, "kept": False})
+    # Work paragraph by paragraph so the reflection report keeps its shape;
+    # work clause by clause so "你又超时了，实际 52 分钟" loses the judgement
+    # and keeps the number instead of trading one for the other.
+    kept: list[tuple[int, str]] = []
+    for index, paragraph in enumerate(re.split(r"\n\s*\n", cleaned)):
+        for sentence in _split(paragraph):
+            clauses: list[str] = []
+            for clause in _CLAUSE_SPLIT.split(sentence):
+                piece = clause.strip()
+                if not piece:
+                    continue
+                hit = next(
+                    (rule for needle, rule in BANNED if needle in piece), None
+                )
+                if hit is None:
+                    clauses.append(piece)
+                elif _carries_fact(piece):
+                    # A fact outranks a tone rule: keep it, record the smell.
+                    violations.append(
+                        {"rule": hit, "clause": piece, "kept": "carries_fact"}
+                    )
+                    clauses.append(piece)
+                else:
+                    violations.append(
+                        {"rule": hit, "clause": piece, "kept": False}
+                    )
+            if clauses:
+                kept.append((index, "，".join(clauses)))
 
-    dropped = len(sentences) - len(kept)
+    dropped = 0
     if max_sentences is not None and len(kept) > max_sentences:
-        dropped += len(kept) - max_sentences
+        dropped = len(kept) - max_sentences
         kept = kept[:max_sentences]
         violations.append({"rule": "too_long", "count": dropped})
 
-    body = "。".join(kept)
+    rendered: list[str] = []
+    paragraph_index = -1
+    for index, sentence in kept:
+        if index != paragraph_index:
+            rendered.append(sentence)
+            paragraph_index = index
+        else:
+            rendered[-1] += "。" + sentence
+
+    body = "\n\n".join(rendered)
     if body and not body.endswith(("？", "。", "…")):
         body += "。"
     # A question keeps its mark: splitting on punctuation would otherwise

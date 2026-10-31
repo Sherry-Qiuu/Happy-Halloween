@@ -64,15 +64,23 @@ class BanTest(unittest.TestCase):
         text, _ = policy.apply("这次按 50 分钟排。我觉得你不行。")
         self.assertNotIn("你不行", text)
 
-    def test_sentence_with_a_fact_survives_even_if_it_smells(self):
-        # A fact outranks a tone rule: removing it would hide information.
+    def test_clause_without_a_fact_is_dropped_but_the_numbers_survive(self):
+        # A tone rule may not take the number down with it: work per clause.
         text, violations = policy.apply("你又超时了，实际 52 分钟，预估 30 分钟。")
+        self.assertNotIn("你又", text)
         self.assertIn("52", text)
-        self.assertEqual(violations[0]["kept"], "carries_fact")
+        self.assertIn("30", text)
+        self.assertEqual(violations[0]["rule"], "cold_talk")
+        self.assertFalse(violations[0]["kept"])
 
     def test_report_mode_keeps_the_paragraphs(self):
-        raw = "记录到的事实\n今天记录 65 分钟。\n\n可能的模式\n这一周被切得很碎。\n\n可以带走的判断\n下一步留哪一件？"
+        raw = (
+            "记录到的事实\n今天记录 65 分钟。\n\n"
+            "可能的模式\n这一周被切得很碎。\n\n"
+            "可以带走的判断\n下一步留哪一件？"
+        )
         text, _ = policy.apply(raw, max_sentences=None)
+        self.assertIn("\n\n", text)
         self.assertIn("记录到的事实", text)
         self.assertIn("可以带走的判断", text)
 
