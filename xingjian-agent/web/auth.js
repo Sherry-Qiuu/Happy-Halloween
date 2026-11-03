@@ -1,5 +1,5 @@
 /*
- * Xingjian - login, account management, and server sync.
+ * Morrow - login, account management, and server sync.
  *
  * The prototype kept everything in localStorage. This bridge adds a
  * session cookie and mirrors the same document to /api/data, without
@@ -324,8 +324,28 @@
     paintUser();
     setSync('loading');
 
+    // file:// 打开（双击 index.html）时没有后端可连：直接进本地演示模式
+    if (location.protocol === 'file:') {
+      currentUser = { id: 'local-demo', username: 'local', display_name: '明' };
+      writeStorage(USER_KEY, JSON.stringify(currentUser));
+      localMode = true;
+      document.body.classList.remove('xj-booting', 'xj-locked');
+      window.__xjReady = true;
+      setSync('local');
+      try {
+        render();
+      } catch (error) {
+        console.error('[morrow] local render failed', error);
+      }
+      return;
+    }
+
     try {
       const health = await request('/api/health');
+      if (health.dev_bypass_auth) {
+        enterDevMode();
+        return;
+      }
       emailRequired =
         health.email_required === undefined
           ? true
@@ -484,7 +504,7 @@
       overlay.id = 'xj-auth';
       overlay.innerHTML =
         '<div class="authwrap">' +
-        '<div class="authbrand">行间<small>让计划贴近生活</small></div>' +
+        '<div class="authbrand">Morrow<small>让计划贴近生活</small></div>' +
         '<div class="authcard">' +
         '<div class="authtabs">' +
         '<button type="button" data-auth-tab="login">登录</button>' +
@@ -889,6 +909,18 @@
     if (!element) return;
     element.textContent = message || '';
     element.hidden = !message;
+  }
+
+  function enterDevMode() {
+    // Dev bypass intentionally uses browser-local persistence; account APIs stay disabled.
+    localMode = true;
+    currentUser = { id: 'dev', username: 'dev', display_name: '本地开发' };
+    writeStorage(USER_KEY, JSON.stringify(currentUser));
+    data = normalizeData(data);
+    document.body.classList.remove('xj-booting', 'xj-locked');
+    window.__xjReady = true;
+    setSync('local');
+    try { render(); } catch (error) { console.error('[xingjian] dev render failed', error); }
   }
 
   function enterLocalMode() {

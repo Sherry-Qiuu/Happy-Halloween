@@ -8,13 +8,14 @@ covers self-hosted gateways such as Ollama (``DEEPSEEK_BASE_URL``).
 from __future__ import annotations
 
 import json
+import re
 import urllib.error
 import urllib.request
 from typing import Any, Iterator
 
 from config import Settings
 from prompts import PROPOSAL_END, PROPOSAL_START
-from protocol import fallback_summary, sanitize_changes
+from protocol import fallback_summary, sanitize_changes, sanitize_clarify
 
 UPSTREAM_ERRORS = {
     400: "请求格式不被模型接受，请换一种说法再试。",
@@ -141,8 +142,13 @@ def parse_proposal(raw: str, goals_count: int | None) -> dict[str, Any] | None:
 
 def parse_turn(
     raw: str, goals_count: int | None
-) -> tuple[dict[str, Any] | None, dict[str, Any] | None, dict[str, Any] | None]:
-    """Split the block into ``(proposal, persona_raw, draft_raw)``.
+) -> tuple[
+    dict[str, Any] | None,
+    dict[str, Any] | None,
+    dict[str, Any] | None,
+    dict[str, Any] | None,
+]:
+    """Split the block into ``(proposal, persona, draft, clarify)``.
 
     Neither the persona nor the draft is trusted here: the server checks
     every quote against the user's own words, and reads the draft only to
@@ -150,13 +156,14 @@ def parse_turn(
     """
     payload = _block_payload(raw)
     if payload is None:
-        return None, None, None
+        return None, None, None, None
     persona = payload.get("persona")
     draft = payload.get("draft")
     return (
         _proposal_from(payload, goals_count),
         persona if isinstance(persona, dict) else None,
         draft if isinstance(draft, dict) else None,
+        sanitize_clarify(payload.get("clarify")),
     )
 
 
@@ -184,7 +191,7 @@ def iter_deltas(
             "Authorization": f"Bearer {settings.api_key}",
             "Content-Type": "application/json",
             "Accept": "text/event-stream",
-            "User-Agent": "xingjian-agent/1.0",
+            "User-Agent": "morrow-agent/1.0",
         },
     )
     try:
@@ -227,6 +234,14 @@ def iter_deltas(
                 yield content
 
 
+STATE_TAG_RE = re.compile(r"</?(?:state|persona|context)>?", re.IGNORECASE)
+
+
+def strip_state_tags(text: str) -> str:
+    """Drop prompt-only tags the model sometimes echoes into its reply."""
+    return STATE_TAG_RE.sub("", text)
+
+
 def iter_reply(
     settings: Settings,
     messages: list[dict[str, str]],
@@ -237,13 +252,20 @@ def iter_reply(
     del context  # the panel is already described inside the state block
     splitter = ProposalSplitter()
     for chunk in iter_deltas(settings, messages):
-        text = splitter.feed(chunk)
+        text = strip_state_tags(splitter.feed(chunk))
         if text:
             yield "delta", text
-    tail = splitter.finish()
+    tail = strip_state_tags(splitter.finish())
     if tail.strip():
         yield "delta", tail
-    proposal, persona, draft = parse_turn(splitter.block, goals_count)
+    proposal, persona, draft, clarify = parse_turn(splitter.block, goals_count)
+    import os as _os
+    if _os.environ.get('XJ_DEBUG_BLOCK') and splitter.block and not (proposal or clarify):
+        import sys as _sys
+        _sys.stderr.write('[block] ' + splitter.block[:1500] + chr(10))
+        _sys.stderr.flush()
+    if clarify:
+        yield "clarify", clarify
     if proposal:
         yield "proposal", proposal
     if persona:

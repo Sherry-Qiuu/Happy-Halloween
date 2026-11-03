@@ -1,6 +1,6 @@
 https://xingjian.onrender.com
 
-# 行间
+# Morrow
 
 > 计划 → 反思 原型：待办、目标、日历、日 / 周反思，外加一个只给建议、不替你做决定的 AI 面板。
 
@@ -54,4 +54,4 @@ python server.py
 
 ---
 
-仓库名 `Happy-Halloween` 只是代号，项目本身叫「行间」。
+仓库名 `Happy-Halloween` 只是代号，项目本身叫「Morrow」。

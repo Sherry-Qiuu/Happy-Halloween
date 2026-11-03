@@ -25,13 +25,13 @@ if TYPE_CHECKING:  # pragma: no cover - import cycle is typing-only
 
 PURPOSE_COPY = {
     "register": (
-        "注册行间账号",
-        "你正在注册行间账号。",
+        "注册 Morrow 账号",
+        "你正在注册 Morrow 账号。",
         "如果这不是你本人的操作，请忽略这封邮件，你的邮箱不会被绑定。",
     ),
     "reset": (
-        "重置行间密码",
-        "你正在重置行间账号的密码。",
+        "重置 Morrow 密码",
+        "你正在重置 Morrow 账号的密码。",
         "如果这不是你本人的操作，请忽略这封邮件，原密码仍然有效。",
     ),
 }
@@ -71,7 +71,7 @@ class Mailer:
         settings = self.settings
         title, lead, advice = PURPOSE_COPY.get(
             purpose,
-            ("行间验证码", "你正在进行一项账号操作。", "如果不是你本人操作，请忽略这封邮件。"),
+            ("Morrow 验证码", "你正在进行一项账号操作。", "如果不是你本人操作，请忽略这封邮件。"),
         )
         minutes = max(1, round(settings.code_ttl / 60))
         if settings.mail_transport == "console":
@@ -104,7 +104,7 @@ class Mailer:
         settings = self.settings
         sender = settings.mail_sender
         message = EmailMessage()
-        message["Subject"] = f"行间 · {title}验证码 {code}"
+        message["Subject"] = f"Morrow · {title}验证码 {code}"
         message["From"] = formataddr(
             (settings.mail_from_name, sender), charset="utf-8"
         )
@@ -118,7 +118,7 @@ class Mailer:
             f"这个验证码 {minutes} 分钟内有效，只能使用一次。\n"
             f"请勿把验证码告诉任何人。\n\n"
             f"{advice}\n\n"
-            "—— 行间\n"
+            "—— Morrow\n"
         )
         safe_code = escape(code)
         safe_lead = escape(lead)
@@ -130,7 +130,7 @@ class Mailer:
 font-family:'Segoe UI','Microsoft YaHei',sans-serif;color:#243b35">
 <div style="max-width:460px;margin:0 auto;padding:28px;background:#fff;\
 border:1px solid #e3e9e5;border-radius:16px">
-<p style="margin:0 0 6px;font-size:13px;letter-spacing:4px;color:#326451">行间</p>
+<p style="margin:0 0 6px;font-size:13px;letter-spacing:4px;color:#326451">Morrow</p>
 <h1 style="margin:0 0 18px;font-size:18px;font-weight:600">邮箱验证码</h1>
 <p style="margin:0 0 18px;font-size:14px;line-height:1.7;color:#667770">\
 {safe_lead}</p>

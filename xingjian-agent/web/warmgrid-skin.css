@@ -432,17 +432,46 @@ select:focus {
   background: linear-gradient(145deg, var(--edge-accent-soft, #f6f1ff), var(--edge-accent-soft, #ece5ff));
 }
 
-.hblock.blue {
+.hblock.blue { border-left-width: 5px;
+  border-left-style: solid;
   border-left-color: #4f8fd8;
-  background: linear-gradient(145deg, color-mix(in srgb, #4f8fd8 12%, var(--edge-surface, #eaf3ff)), color-mix(in srgb, #4f8fd8 20%, var(--edge-surface, #dbeaff)));
+  background: linear-gradient(145deg, color-mix(in srgb, #4f8fd8 30%, var(--edge-surface, #eaf3ff)), color-mix(in srgb, #4f8fd8 48%, var(--edge-surface, #dbeaff)));
   color: var(--edge-text-2, #133a65);
   box-shadow: 0 2px 8px rgba(44, 33, 66, .05);
 }
 
-.hblock.gold {
+.hblock.gold { border-left-width: 5px;
+  border-left-style: solid;
   border-left-color: #c9764f;
-  background: linear-gradient(145deg, color-mix(in srgb, #d9825f 12%, var(--edge-surface, #fdf0e8)), color-mix(in srgb, #d9825f 20%, var(--edge-surface, #fbe2d4)));
+  background: linear-gradient(145deg, color-mix(in srgb, #d9825f 30%, var(--edge-surface, #fdf0e8)), color-mix(in srgb, #d9825f 48%, var(--edge-surface, #fbe2d4)));
   color: var(--edge-text-2, #6b2f1a);
+  box-shadow: 0 2px 8px rgba(44, 33, 66, .05);
+}
+
+.hblock.green {
+  border-left-width: 5px;
+  border-left-style: solid;
+  border-left-color: #5c9a76;
+  background: linear-gradient(145deg, color-mix(in srgb, #5c9a76 30%, var(--edge-surface, #eef7f1)), color-mix(in srgb, #5c9a76 48%, var(--edge-surface, #e2f0e8)));
+  color: var(--edge-text-2, #1c3a2a);
+  box-shadow: 0 2px 8px rgba(44, 33, 66, .05);
+}
+
+.hblock.purple {
+  border-left-width: 5px;
+  border-left-style: solid;
+  border-left-color: #7d6bb5;
+  background: linear-gradient(145deg, color-mix(in srgb, #7d6bb5 30%, var(--edge-surface, #f2eefc)), color-mix(in srgb, #7d6bb5 48%, var(--edge-surface, #e9e2fa)));
+  color: var(--edge-text-2, #2c2250);
+  box-shadow: 0 2px 8px rgba(44, 33, 66, .05);
+}
+
+.hblock.pink {
+  border-left-width: 5px;
+  border-left-style: solid;
+  border-left-color: #c47a94;
+  background: linear-gradient(145deg, color-mix(in srgb, #c47a94 30%, var(--edge-surface, #fdf0f4)), color-mix(in srgb, #c47a94 48%, var(--edge-surface, #fbe2ea)));
+  color: var(--edge-text-2, #4a2230);
   box-shadow: 0 2px 8px rgba(44, 33, 66, .05);
 }
 

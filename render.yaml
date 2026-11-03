@@ -1,23 +1,24 @@
-# Render Blueprint for the Xingjian app.
+# Render Blueprint for Morrow.
 #
-# The static site lives in xingjian-agent/web and is published by GitHub
-# Pages. The Python service also serves that same folder; the Docker build
-# is rooted in xingjian-agent/ via rootDir.
+# 部署的是「一个容器，同时提供前端静态文件 + Python API + 排程引擎」：
+#   浏览器 → /            → xingjian-agent/web
+#          → /api/agent/*  → server.py（真模型 deepseek）
+#          → /api/agent/replan → backend_services → calendar-rescheduler/backend/core.py
 #
-# Free plan notes:
-#   - the instance sleeps after ~15 minutes without traffic; the first
-#     request afterwards takes about a minute to wake up;
-#   - no persistent disk, so accounts created on the free plan can be
-#     lost on redeploy. Add a disk mounted at /data on a paid plan for
-#     durable accounts.
+# 注意：dockerContext 是仓库根目录，因为排程引擎在 xingjian-agent 之外。
+#
+# 免费版注意：
+#   - 15 分钟无流量会休眠，之后第一次访问要等约 1 分钟唤醒；
+#   - 免费版没有持久磁盘，重新部署后账号可能丢失。
+#     正式用请加一块挂到 /data 的磁盘（付费版），或改用有磁盘的 VPS。
 services:
   - type: web
-    name: xingjian
+    name: morrow
     runtime: docker
     plan: free
     region: singapore
-    rootDir: xingjian-agent
-    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    dockerfilePath: ./xingjian-agent/Dockerfile
     healthCheckPath: /api/health
     autoDeploy: true
     envVars:
@@ -27,40 +28,31 @@ services:
         value: "8000"
       - key: XINGJIAN_DATA_DIR
         value: /data
+      # 公网必须用 HTTPS Cookie；本地调试才设 0
       - key: COOKIE_SECURE
         value: "1"
       - key: XINGJIAN_TRUST_PROXY
         value: "1"
       - key: XINGJIAN_ALLOW_REGISTRATION
         value: "1"
-      # Email verification is turned off for the demo: no code is sent and
-      # registration only needs a username and password.
+      # 演示期关掉邮箱验证：注册只要用户名 + 密码
       - key: XINGJIAN_REQUIRE_EMAIL
         value: "0"
-      - key: DEEPSEEK_MODEL
-        value: deepseek-flash
-      # Fill these in the Render dashboard; never commit real secrets.
-      - key: DEEPSEEK_API_KEY
-        sync: false
-      # Email verification for sign-up and password reset.
-      #
-      # Render drops outbound SMTP connections (ports 465 and 587 both
-      # time out after ~20s), so the smtp transport cannot deliver from
-      # this host. The console transport prints the 6-digit code to the
-      # service logs instead, which is enough for a demo: register, then
-      # find "验证码" under Logs. Switch back to smtp only when sending
-      # through an HTTPS mail API or a host that allows SMTP egress.
+      # 绝对不要在公网开启免登录（开着任何人都等于同一个 dev 账号）
+      - key: XINGJIAN_DEV_BYPASS_AUTH
+        value: "0"
+      # 演示不需要真发邮件，验证码打到日志里
       - key: MAIL_TRANSPORT
         value: console
-      - key: SMTP_HOST
-        value: smtp.qq.com
-      - key: SMTP_PORT
-        value: "465"
-      - key: MAIL_SECURITY
-        value: ssl
-      - key: SMTP_USER
-        sync: false
-      - key: SMTP_PASSWORD
-        sync: false
-      - key: MAIL_FROM
+      # ---- 模型：在你的 key 可用的端点上填，下面这套是词元智研网关 ----
+      - key: DEEPSEEK_BASE_URL
+        value: https://ciyuanzhiyan.com/v1
+      - key: DEEPSEEK_MODEL
+        value: deepseek-v4.1-flash
+      - key: AGENT_MAX_TOKENS
+        value: "2400"
+      - key: AGENT_MOCK
+        value: "0"
+      # 密钥只在 Render 面板里填，永远不要进仓库
+      - key: DEEPSEEK_API_KEY
         sync: false

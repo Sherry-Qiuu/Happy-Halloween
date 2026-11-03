@@ -1,5 +1,5 @@
 #!/usr/bin/env sh
-# Start the Xingjian agent service.
+# Start the Morrow agent service.
 #   ./start.sh              # http://127.0.0.1:8000
 #   PORT=8080 ./start.sh    # another port
 #   AGENT_MOCK=1 ./start.sh # offline demo, no API key needed

@@ -23,6 +23,10 @@ if (-not $python) {
 }
 
 $envFile = Join-Path $PSScriptRoot '.env'
+# Local development defaults: skip login and use console/no-email flow.
+if (-not $env:XINGJIAN_DEV_BYPASS_AUTH) { $env:XINGJIAN_DEV_BYPASS_AUTH = '1' }
+if (-not $env:MAIL_TRANSPORT) { $env:MAIL_TRANSPORT = 'console' }
+if (-not $env:XINGJIAN_REQUIRE_EMAIL) { $env:XINGJIAN_REQUIRE_EMAIL = '0' }
 $hasKey = $env:DEEPSEEK_API_KEY
 if (-not $hasKey -and (Test-Path $envFile)) {
     $line = Select-String -Path $envFile -Pattern '^DEEPSEEK_API_KEY=(.+)$' |

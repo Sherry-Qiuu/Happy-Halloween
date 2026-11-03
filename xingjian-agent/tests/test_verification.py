@@ -160,8 +160,8 @@ class MailerTests(unittest.TestCase):
             "alice@example.com",
             "123456",
             "register",
-            "注册行间账号",
-            "你正在注册行间账号。",
+            "注册 Morrow 账号",
+            "你正在注册 Morrow 账号。",
             "如果这不是你本人的操作，请忽略这封邮件。",
             10,
         )

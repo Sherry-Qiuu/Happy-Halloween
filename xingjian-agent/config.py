@@ -1,4 +1,4 @@
-"""Runtime configuration for the Xingjian DeepSeek agent service.
+"""Runtime configuration for the Morrow DeepSeek agent service.
 
 Every value comes from an environment variable. A local ``.env`` file is
 read on start so ``python server.py`` works without exporting anything.
@@ -101,6 +101,8 @@ class Settings:
     # When false, sign-up needs no email code and the email field is
     # optional. Keep true unless outbound mail is unavailable.
     require_email: bool = True
+    # Development-only bypass for local demos; never enable in production.
+    dev_bypass_auth: bool = False
 
     # Email verification (registration and password reset). The SMTP
     # password is a QQ Mail "授权码", never the mailbox login password.
@@ -111,7 +113,7 @@ class Settings:
     mail_user: str = ""
     mail_password: str = ""
     mail_from: str = ""
-    mail_from_name: str = "行间"
+    mail_from_name: str = "Morrow"
     mail_timeout: float = 20.0
     code_ttl: int = 600
     code_resend: int = 60
@@ -167,8 +169,17 @@ class Settings:
 
 
 def load_settings(env_file: Path | None = None) -> Settings:
-    """Build a :class:`Settings` object from the environment."""
-    load_env_file(env_file or (ROOT / ".env"))
+    """Build a :class:`Settings` object from the environment.
+
+    A local ``.env`` is read unless ``XINGJIAN_SKIP_ENV_FILE=1`` is set; the
+    test suite sets that so a developer's real key and mail settings never
+    leak into the fixtures.
+    """
+    if env_file is None:
+        if not os.environ.get("XINGJIAN_SKIP_ENV_FILE"):
+            load_env_file(ROOT / ".env")
+    else:
+        load_env_file(env_file)
     port = os.environ.get("PORT", "").strip() or os.environ.get(
         "AGENT_PORT", ""
     ).strip()
@@ -184,7 +195,7 @@ def load_settings(env_file: Path | None = None) -> Settings:
         ).strip(),
         model=os.environ.get("DEEPSEEK_MODEL", DEFAULT_MODEL).strip(),
         temperature=_as_float("AGENT_TEMPERATURE", 0.4),
-        max_tokens=_as_int("AGENT_MAX_TOKENS", 1200),
+        max_tokens=_as_int("AGENT_MAX_TOKENS", 2400),
         timeout=_as_float("AGENT_TIMEOUT", 60.0),
         host=os.environ.get("HOST", "127.0.0.1").strip(),
         port=int(port) if port else 8000,
@@ -207,6 +218,7 @@ def load_settings(env_file: Path | None = None) -> Settings:
         trust_proxy=_as_bool("XINGJIAN_TRUST_PROXY"),
         max_users=_as_int("XINGJIAN_MAX_USERS", 5_000),
         require_email=_as_bool("XINGJIAN_REQUIRE_EMAIL", True),
+        dev_bypass_auth=_as_bool("XINGJIAN_DEV_BYPASS_AUTH", False),
         mail_transport=_choice(
             "MAIL_TRANSPORT", "smtp", ("smtp", "console")
         ),
@@ -219,8 +231,8 @@ def load_settings(env_file: Path | None = None) -> Settings:
         mail_user=mail_user,
         mail_password=mail_password,
         mail_from=os.environ.get("MAIL_FROM", "").strip() or mail_user,
-        mail_from_name=os.environ.get("MAIL_FROM_NAME", "行间").strip()
-        or "行间",
+        mail_from_name=os.environ.get("MAIL_FROM_NAME", "Morrow").strip()
+        or "Morrow",
         mail_timeout=_as_float("SMTP_TIMEOUT", 20.0),
         code_ttl=_clamped_int("EMAIL_CODE_TTL", 600, 60, 3_600),
         code_resend=_clamped_int("EMAIL_CODE_RESEND", 60, 10, 600),

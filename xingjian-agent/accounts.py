@@ -1,4 +1,4 @@
-"""Accounts, sessions, and per-user data for the Xingjian app.
+"""Accounts, sessions, and per-user data for the Morrow app.
 
 Everything lives in one data directory (``server information`` during
 local development, ``/data`` in Docker)::
@@ -617,6 +617,7 @@ class AccountStore:
             try:
                 self._data_path(user_id).unlink(missing_ok=True)
                 self._profile_path(user_id).unlink(missing_ok=True)
+                self._memory_path(user_id).unlink(missing_ok=True)
             except OSError as error:
                 raise StorageError(
                     f"账号已删除，但数据文件未能删除: {error}"
@@ -736,12 +737,58 @@ class AccountStore:
             )
         return self.data_dir / f"{user_id}.profile.json"
 
+    def _memory_path(self, user_id: str) -> Path:
+        """Long-term conversation memory, server owned like the profile."""
+        if not USER_ID_RE.match(user_id or ""):
+            raise AccountError(
+                "用户标识不正确。", status=400, code="bad_user_id"
+            )
+        return self.data_dir / f"{user_id}.memory.json"
+
+    def load_memory(self, user_id: str) -> dict[str, Any] | None:
+        with self._lock:
+            payload = self._read_json(self._memory_path(user_id))
+            memory = payload.get("memory")
+            return memory if isinstance(memory, dict) else None
+
+    def save_memory(self, user_id: str, memory: dict[str, Any]) -> str:
+        if not isinstance(memory, dict):
+            raise AccountError(
+                "记忆必须是 JSON 对象。", code="memory_invalid"
+            )
+        try:
+            encoded = json.dumps(memory, ensure_ascii=False)
+        except (TypeError, ValueError) as error:
+            raise AccountError(
+                f"记忆不是合法 JSON: {error}", code="memory_invalid"
+            ) from error
+        if len(encoded.encode("utf-8")) > MAX_PROFILE_BYTES:
+            raise AccountError(
+                "记忆超过 64 KB，暂时无法保存。",
+                status=413,
+                code="memory_too_large",
+            )
+        updated_at = _now()
+        with self._lock:
+            self._write_json(
+                self._memory_path(user_id),
+                {
+                    "version": 1,
+                    "updated_at": updated_at,
+                    "memory": memory,
+                },
+            )
+            return _iso(updated_at) or ""
+
+    def delete_memory(self, user_id: str) -> None:
+        with self._lock:
+            try:
+                self._memory_path(user_id).unlink(missing_ok=True)
+            except OSError:
+                pass
+
     def load_profile(self, user_id: str) -> dict[str, Any] | None:
         with self._lock:
-            if self._find_by_id(user_id) is None:
-                raise AccountError(
-                    "账号不存在。", status=401, code="unknown_user"
-                )
             payload = self._read_json(self._profile_path(user_id))
             profile = payload.get("profile")
             return profile if isinstance(profile, dict) else None
@@ -763,10 +810,8 @@ class AccountStore:
             )
         updated_at = _now()
         with self._lock:
-            if self._find_by_id(user_id) is None:
-                raise AccountError(
-                    "账号不存在。", status=401, code="unknown_user"
-                )
+            # 本地演示用户（XINGJIAN_DEV_BYPASS_AUTH）没有账号行，
+            # 但画像仍然要落盘，路径本身已经做过 id 校验。
             self._write_json(
                 self._profile_path(user_id),
                 {

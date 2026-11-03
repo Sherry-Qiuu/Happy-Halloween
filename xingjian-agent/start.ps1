@@ -1,4 +1,4 @@
-# Start the Xingjian agent service on Windows.
+# Start the Morrow agent service on Windows.
 #   .\start.ps1              # http://127.0.0.1:8000
 #   .\start.ps1 -Port 8080   # another port
 #   .\start.ps1 -Mock        # offline demo, no API key needed

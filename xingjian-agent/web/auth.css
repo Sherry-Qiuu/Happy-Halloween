@@ -1,5 +1,5 @@
 /*
- * Xingjian - login, sync indicator, and account dialog.
+ * Morrow - login, sync indicator, and account dialog.
  * Loaded after the prototype's inline styles so it can reuse the same
  * design tokens (--ink, --green, --line, --soft, --bg).
  */
@@ -10,7 +10,7 @@ body.xj-booting .app {
 }
 
 body.xj-booting::after {
-  content: "行间";
+  content: "Morrow";
   position: fixed;
   inset: 0;
   display: grid;

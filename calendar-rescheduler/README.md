@@ -1,6 +1,6 @@
 # 日历重排 · 前后端设计
 
-这是「行间」的日历重排实验包：前端演示拖拽 / 缩放 / AI 对话协商，后端提供画像感知的重排策略、呼吸层和留白预算。独立于主应用，方便先评审交互与策略，再接入 `xingjian-agent`。
+这是「Morrow」的日历重排实验包：前端演示拖拽 / 缩放 / AI 对话协商，后端提供画像感知的重排策略、呼吸层和留白预算。独立于主应用，方便先评审交互与策略，再接入 `xingjian-agent`。
 
 ## 目录
 
@@ -65,4 +65,4 @@ proposal = Planner(persona).propose(events, disruption)
 
 ---
 
-仓库名 `Happy-Halloween` 只是代号，主项目仍是「行间」。
+仓库名 `Happy-Halloween` 只是代号，主项目仍是「Morrow」。

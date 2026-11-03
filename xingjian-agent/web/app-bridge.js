@@ -239,7 +239,8 @@
     }
   }
 
-  /* 只在账号已登录且后端报告 AI 可用时接管；否则保持原来的本地草案。 */
+  /* 统一走 agent.js 的对话管线：完整 state（含时间块/日期）、
+     建议卡、采用/撤销、以及服务端长期记忆与历史会话。 */
   const localInput = window.aiHomeInput;
   if (typeof localInput === 'function') {
     window.__localHomeInput = localInput;
@@ -248,6 +249,9 @@
       if (!value) return undefined;
       const field = document.querySelector('#homeComposer input');
       if (field) field.value = '';
+      if (window.__xingjianAgent && typeof window.send === 'function') {
+        return window.send(value);
+      }
       const ready = agent() && agent().configured && currentUser();
       if (!ready || streaming) return localInput.apply(this, arguments);
       return chat(value);

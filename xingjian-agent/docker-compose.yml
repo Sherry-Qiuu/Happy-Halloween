@@ -1,8 +1,11 @@
 services:
-  xingjian:
-    build: .
-    image: xingjian:latest
-    container_name: xingjian
+  morrow:
+    # 构建上下文是仓库根目录：排程引擎在 xingjian-agent 之外，镜像里要一起带上。
+    build:
+      context: ..
+      dockerfile: xingjian-agent/Dockerfile
+    image: morrow:latest
+    container_name: morrow
     restart: unless-stopped
     env_file:
       - .env
@@ -10,11 +13,11 @@ services:
       HOST: 0.0.0.0
       PORT: 8000
       XINGJIAN_DATA_DIR: /data
-    # Bind to loopback only; put nginx/Caddy in front for HTTPS.
-    # For a quick LAN test, change this to "8000:8000".
+    # 只绑本机；对外用 nginx / Caddy 反代 + HTTPS。
+    # 想局域网直接看可以改成 "8000:8000"。
     ports:
       - "127.0.0.1:8000:8000"
     volumes:
-      # The folder must be writable by uid 10001 (the app user):
+      # 目录要能让容器里的 uid 10001 写入：
       #   mkdir -p data && sudo chown -R 10001:10001 data
       - ./data:/data

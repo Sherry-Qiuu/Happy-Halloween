@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Verify a deployed Xingjian instance from the outside.
+"""Verify a deployed Morrow instance from the outside.
 
     python scripts/verify_deploy.py calhub.asia
     python scripts/verify_deploy.py calhub.asia --json
@@ -138,7 +138,7 @@ def check_app(report: Report, base: str, timeout: float) -> None:
         text = body.decode("utf-8", "replace")
         report.add(
             "login page served",
-            status == 200 and "行间" in text,
+            status == 200 and "Morrow" in text,
             f"HTTP {status}, {len(body)} bytes",
         )
         report.add(
@@ -198,7 +198,7 @@ def check_app(report: Report, base: str, timeout: float) -> None:
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Check a deployed Xingjian instance."
+        description="Check a deployed Morrow instance."
     )
     parser.add_argument("host", help="hostname, e.g. calhub.asia")
     parser.add_argument("--scheme", default="https", choices=["https", "http"])
