@@ -1,0 +1,904 @@
+/* ============================================================
+   ai-dock.css — 全站 AI 提问区统一收成底部小对话框
+
+   折叠：只有一条和输入胶囊同宽的浮条，页面主体占满
+   展开：以输入胶囊的宽度为准，向上长高，浮在内容之上，
+         不挤压上面的日历 / 目标 / 反思
+
+   只改布局，不改任何业务逻辑。
+   ============================================================ */
+
+:root {
+  --ai-dock-compact: 74px;
+  --ai-dock-expanded: min(50vh, 470px);
+  --ai-dock-width: 760px;
+  --ai-dock-gap: 12px;
+  --ai-dock-ease: cubic-bezier(.22, .61, .36, 1);
+}
+
+/* ------------------------------------------------------------
+   1. 内容占满，底部只留一条的高度给对话框落脚
+   ------------------------------------------------------------ */
+.workspace,
+.workspace.expanded {
+  position: relative;
+  grid-template-rows: minmax(0, 1fr) calc(var(--ai-dock-compact) + var(--ai-dock-gap)) !important;
+}
+
+/* ------------------------------------------------------------
+   2. 对话框：宽度以输入胶囊为准，居中浮动
+   ------------------------------------------------------------ */
+.workspace > .hai,
+.workspace > .ai {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: var(--ai-dock-gap);
+  z-index: 30;
+  width: min(var(--ai-dock-width), calc(100% - 28px));
+  height: var(--ai-dock-compact);
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  overflow: visible;
+  border: 0;
+  border-radius: 22px;
+  background: transparent;
+  box-shadow: none;
+  transition: height .28s var(--ai-dock-ease),
+              padding .28s var(--ai-dock-ease),
+              background .2s linear,
+              box-shadow .28s var(--ai-dock-ease);
+}
+
+/* 展开：只往上长高，宽度不变，整块浮在内容之上 */
+.workspace.ai-open > .hai,
+.workspace.ai-open > .ai {
+  height: var(--ai-dock-expanded);
+  overflow: hidden;
+  padding: 14px 16px 12px;
+  border: 1px solid var(--edge-accent-line, #e6e0f2);
+  border-radius: 20px;
+  background: var(--edge-surface, #fffefa);
+  box-shadow: 0 -18px 56px rgba(37, 60, 55, .16),
+              0 24px 64px rgba(37, 60, 55, .20);
+}
+
+/* ------------------------------------------------------------
+   3. 折叠态：只剩输入胶囊本身
+   ------------------------------------------------------------ */
+.workspace:not(.ai-open) > .hai,
+.workspace:not(.ai-open) > .ai {
+  justify-content: center;
+}
+
+.workspace:not(.ai-open) .hai-top,
+.workspace:not(.ai-open) .hai-scroll,
+.workspace:not(.ai-open) .voicestate,
+.workspace:not(.ai-open) .scenariochips,
+.workspace:not(.ai-open) .aihead,
+.workspace:not(.ai-open) .aibody,
+.workspace:not(.ai-open) .endchat,
+.workspace:not(.ai-open) .ai > .chips {
+  display: none !important;
+}
+
+/* ------------------------------------------------------------
+   4. 输入胶囊：铺满对话框宽度，折叠时自己就是那条浮条
+   ------------------------------------------------------------ */
+.workspace > .hai .composer,
+.workspace > .ai .composer {
+  width: 100% !important;
+  margin: 0 auto;
+  flex-shrink: 0;
+  padding: 3px 4px 3px 12px;
+  gap: 6px;
+  box-shadow: 0 8px 24px rgba(37, 60, 55, .10);
+}
+
+.workspace.ai-open > .hai .composer,
+.workspace.ai-open > .ai .composer {
+  margin: 8px auto 0;
+  box-shadow: none;
+}
+
+.workspace > .hai .composer input,
+.workspace > .ai .composer input {
+  padding: 6px 0;
+  font-size: 14px;
+}
+
+/* 发送/语音按钮缩小一点，和胶囊更贴合 */
+.workspace > .hai .composer button,
+.workspace > .ai .composer button {
+  width: 34px;
+  height: 34px;
+  min-width: 34px;
+  min-height: 34px;
+}
+
+/* ------------------------------------------------------------
+   5. 展开态：消息区留出呼吸，滚动条贴在内部
+   ------------------------------------------------------------ */
+.workspace.ai-open .hai-scroll,
+.workspace.ai-open .aibody {
+  margin-bottom: 4px;
+  padding-right: 4px;
+  scrollbar-width: thin;
+}
+
+/* ------------------------------------------------------------
+   6. 外观按钮：抬到对话条上方，别压住发送键
+   ------------------------------------------------------------ */
+body .edge-launcher {
+  bottom: calc(var(--ai-dock-compact) + 26px);
+  transition: bottom .28s var(--ai-dock-ease), opacity .2s linear;
+}
+
+body .edge-panel {
+  bottom: calc(var(--ai-dock-compact) + 84px);
+}
+
+/* 对话拉高时先让位，收起后自动回来 */
+body.ai-open .edge-launcher,
+body.ai-open .edge-panel {
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* 展开时给日历留出底部空间，最后几个小时才不会被对话框永久挡住 */
+.workspace.ai-open .hscroll {
+  padding-bottom: calc(var(--ai-dock-expanded) * .82);
+}
+
+/* ------------------------------------------------------------
+   8. 收起按钮 + 缩写徽标（由 ai-dock.js 注入）
+   ------------------------------------------------------------ */
+.ai-dock-close {
+  flex-shrink: 0;
+  width: 26px;
+  height: 26px;
+  min-width: 26px;
+  min-height: 26px;
+  padding: 0;
+  border: 1px solid var(--wg-line, #e3e9e5);
+  border-radius: 50%;
+  background: #fff;
+  color: var(--wg-muted-2, #7a8876);
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.ai-dock-close:hover {
+  background: #f3f6f2;
+  color: var(--wg-ink, #253c37);
+}
+
+/* 历史会话按钮：放在输入条里，折叠时也能点到 */
+.composer .ai-dock-history {
+  flex-shrink: 0;
+  width: 34px;
+  height: 34px;
+  min-width: 34px;
+  min-height: 34px;
+  margin: 0;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 50%;
+  background: var(--edge-surface-3, #f4f0e9);
+  color: var(--edge-text-2, #575161);
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.composer .ai-dock-history:hover {
+  background: var(--edge-surface-3, #ece6dd);
+  color: var(--wg-ink, #253c37);
+}
+
+/* 画像卡片 */
+.ai-portrait {
+  border: 1px solid var(--wg-line, #e3e9e5);
+  border-radius: 12px;
+  background: #fbfaf6;
+  padding: 10px 12px;
+}
+
+.ai-portrait-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.ai-portrait-head strong {
+  font-size: 13px;
+}
+
+.ai-portrait-head small {
+  color: var(--wg-muted-2, #7a8876);
+  font-size: 11px;
+}
+
+.ai-portrait-rows {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 2px 14px;
+}
+
+.ai-portrait-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 12px;
+  padding: 2px 0;
+  border-bottom: 1px dashed #ece9f2;
+}
+
+.ai-portrait-row span {
+  color: var(--wg-muted-2, #7a8876);
+}
+
+.ai-portrait-notes {
+  margin: 6px 0 0;
+  padding-left: 16px;
+  font-size: 11.5px;
+  color: #5c5768;
+  line-height: 1.6;
+}
+
+/* 历史会话面板 */
+dialog.ai-history-modal {
+  width: min(660px, 92vw);
+  max-height: 84vh;
+}
+
+.ai-history {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: min(520px, 82vw);
+  max-height: min(70vh, 560px);
+}
+
+.ai-history-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.ai-history-head h2 {
+  font-size: 16px;
+  margin: 0;
+}
+
+.ai-history-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  overflow: auto;
+  max-height: 44vh;
+  padding-right: 2px;
+}
+
+.ai-history-row {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  width: 100%;
+  padding: 9px 11px;
+  border: 1px solid var(--wg-line, #e3e9e5);
+  border-radius: 10px;
+  background: #fff;
+  text-align: left;
+  cursor: pointer;
+}
+
+.ai-history-row:hover {
+  border-color: var(--edge-accent-line, #d8d0ff);
+  background: #faf8ff;
+}
+
+.ai-history-row small {
+  color: var(--wg-muted-2, #7a8876);
+  font-size: 11px;
+}
+
+.ai-history-empty {
+  color: var(--wg-muted-2, #7a8876);
+  font-size: 12px;
+  padding: 10px 0;
+}
+
+.ai-history-thread-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  overflow: auto;
+  max-height: 46vh;
+  padding-right: 2px;
+}
+
+.ai-history-back {
+  align-self: flex-start;
+  border: 0;
+  background: transparent;
+  color: var(--wg-purple-deep, #4b3cc4);
+  font-size: 12px;
+  cursor: pointer;
+  padding: 0;
+}
+
+.ai-history-thread h3 {
+  font-size: 12px;
+  color: var(--wg-muted-2, #7a8876);
+  margin: 0 0 4px;
+}
+
+.ai-history-bubble {
+  border: 1px solid var(--wg-line, #e3e9e5);
+  border-radius: 10px;
+  background: #fff;
+  padding: 7px 10px;
+  margin: 4px 0;
+  font-size: 12.5px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+}
+
+.ai-history-bubble.user {
+  background: var(--wg-purple-soft, #efeafc);
+  border-color: var(--edge-accent-line, #ded4ff);
+}
+
+.ai-dock-badge {
+  position: relative;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  margin-right: 2px;
+  border-radius: 50%;
+  background: var(--wg-purple-soft, #efeafc);
+  color: var(--wg-purple, #6d5bb5);
+  font-size: 14px;
+  line-height: 1;
+  user-select: none;
+}
+
+/* 收起时仍有待查看的建议：在徽标上点一个提示灯 */
+.hai.has-content .ai-dock-badge::after,
+.ai.has-content .ai-dock-badge::after {
+  content: '';
+  position: absolute;
+  top: 1px;
+  right: 1px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--wg-purple, #6d5bb5);
+  box-shadow: 0 0 0 2px var(--wg-purple-soft, #efeafc);
+}
+
+/* 收起时显示「Morrow AI」，展开时由面板标题接管 */
+.ai-dock-name {
+  flex-shrink: 0;
+  margin-right: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: -.01em;
+  color: var(--wg-purple-deep, #4b3cc4);
+  white-space: nowrap;
+}
+
+.workspace.ai-open .ai-dock-name {
+  display: none;
+}
+
+@media (max-width: 800px) {
+  .ai-dock-name {
+    display: none;
+  }
+}
+
+/* ------------------------------------------------------------
+   9. 建议预览：日历上标出改动前后
+   ------------------------------------------------------------ */
+.hblock.ai-preview-dim {
+  opacity: .3;
+  filter: grayscale(.55);
+}
+
+.hblock.ai-preview-old {
+  opacity: .55;
+  background: repeating-linear-gradient(
+    45deg,
+    #f2eff7 0, #f2eff7 6px,
+    #e9e5f1 6px, #e9e5f1 12px
+  );
+  border-color: #b9b1cb;
+  color: #6f6880;
+}
+
+.hblock.ai-preview-remove {
+  border-color: #d14343;
+  color: #a33;
+  text-decoration: line-through;
+}
+
+.hblock.ai-preview-ghost {
+  left: 4px;
+  right: 4px;
+  z-index: 6;
+  padding: 2px 5px;
+  border: 1px dashed #4f9f76;
+  border-radius: 5px;
+  background: #d9f0e3;
+  color: #1f5b3b;
+  font-size: 11px;
+  line-height: 1.35;
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  pointer-events: none;
+  opacity: .96;
+}
+
+.hblock.ai-preview-move {
+  border-color: #7a6cd0;
+  background: #e6e1ff;
+  color: #443aa8;
+}
+
+.ai-preview-legend {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: #f7f5fb;
+  color: #6f6880;
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.ai-preview-legend i {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-left: 6px;
+  border-radius: 2px;
+}
+
+.ai-preview-legend i:first-child {
+  margin-left: 0;
+}
+
+.ai-preview-legend .dot-keep { background: #d9d6e2; }
+.ai-preview-legend .dot-add { background: #7fce9f; }
+.ai-preview-legend .dot-move { background: #9a8cf0; }
+.ai-preview-legend .dot-remove { background: #d97b7b; }
+
+/* AI 观察 */
+.observe-body {
+  margin-top: 6px;
+}
+
+.observe-title {
+  margin: 10px 0 4px;
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--wg-muted-2, #7a8876);
+}
+
+.observe-list {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 13px;
+  line-height: 1.7;
+}
+
+.observe-text {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.7;
+}
+
+.observe-q {
+  margin: 12px 0 0;
+  padding: 10px 12px;
+  border-left: 3px solid var(--wg-purple, #6d5bb5);
+  background: #faf8ff;
+  border-radius: 0 8px 8px 0;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.observe-hour {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+  font-size: 11.5px;
+  color: var(--wg-muted-2, #7a8876);
+}
+
+.observe-hour select {
+  min-height: 24px;
+  padding: 0 6px;
+  border: 1px solid var(--wg-line-strong, #d8d3e4);
+  border-radius: 6px;
+  background: #fff;
+  font-size: 11.5px;
+  color: inherit;
+}
+
+.observe-foot {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 10px;
+  color: var(--wg-muted-2, #7a8876);
+}
+
+.observe-again {
+  min-height: 24px;
+  padding: 1px 9px;
+  font-size: 11.5px;
+}
+
+/* 日历：天数选择 + 拖动/拉伸 */
+.hdays {
+  margin-left: 8px;
+}
+
+.hdays select {
+  min-height: 24px;
+  padding: 0 6px;
+  border: 1px solid var(--wg-line-strong, #d8d3e4);
+  border-radius: 6px;
+  background: #fff;
+  font-size: 11.5px;
+  color: inherit;
+}
+
+.hblock {
+  cursor: grab;
+  touch-action: none;
+}
+
+.hblock::before,
+.hblock::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 6px;
+  cursor: ns-resize;
+  opacity: 0;
+  background: currentColor;
+}
+
+.hblock::before {
+  top: 0;
+}
+
+.hblock::after {
+  bottom: 0;
+}
+
+.hblock:hover::before,
+.hblock:hover::after {
+  opacity: .25;
+}
+
+.hblock.dragging {
+  cursor: grabbing;
+  opacity: .92;
+  z-index: 5;
+  box-shadow: 0 8px 20px rgba(30, 24, 48, .18);
+}
+
+/* 标签颜色（时间块按标签上色） */
+.tagchips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.tagchip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 26px;
+  padding: 2px 10px;
+  border: 1px solid var(--wg-line-strong, #d8d3e4);
+  border-radius: 999px;
+  background: #fff;
+  font-size: 12px;
+  color: #4a4560;
+  cursor: pointer;
+}
+
+.tagchip i {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: #b9b6ad;
+}
+
+.tagchip.on {
+  border-color: #6d5bb5;
+  box-shadow: inset 0 0 0 1px #6d5bb5;
+  font-weight: 600;
+}
+
+.tagchip.c-blue i { background: #4f8fd8; }
+.tagchip.c-gold i { background: #c9764f; }
+.tagchip.c-green i { background: #5c9a76; }
+.tagchip.c-purple i { background: #7d6bb5; }
+.tagchip.c-pink i { background: #c47a94; }
+.tagchip.c-grey i { background: #b9b6ad; }
+
+.tagnew {
+  display: flex;
+  gap: 6px;
+  margin-top: 8px;
+  align-items: center;
+}
+
+.tagnew input {
+  flex: 1;
+  min-width: 0;
+  min-height: 26px;
+  padding: 2px 8px;
+  border: 1px solid var(--wg-line-strong, #d8d3e4);
+  border-radius: 6px;
+  font-size: 12px;
+}
+
+.tagnew select {
+  min-height: 26px;
+  padding: 0 6px;
+  border: 1px solid var(--wg-line-strong, #d8d3e4);
+  border-radius: 6px;
+  font-size: 12px;
+  background: #fff;
+}
+
+.tagnew button {
+  min-height: 26px;
+  padding: 0 10px;
+  font-size: 12px;
+}
+
+/* 未生效标记 */
+.pendtag {
+  display: inline-block;
+  margin-right: 6px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: #fff3d9;
+  color: #8a6100;
+  font-size: 10.5px;
+  font-style: normal;
+  font-weight: 600;
+  vertical-align: 1px;
+}
+
+/* 未生效标记 */
+.agentstatus {
+  display: block;
+  margin-top: 6px;
+  color: var(--wg-muted-2, #7a8876);
+  font-size: 11.5px;
+}
+
+/* 影响账单 + 策略引擎对照 */
+.billrow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 6px;
+  font-size: 11.5px;
+  color: var(--wg-muted-2, #7a8876);
+}
+
+.billrow span {
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: #f3f1f8;
+}
+
+.crossbox {
+  margin-top: 8px;
+  padding: 8px 10px;
+  border: 1px dashed #c9c2de;
+  border-radius: 10px;
+  background: #fbfaff;
+}
+
+.crosshead {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-bottom: 4px;
+}
+
+.crosshead strong {
+  font-size: 12.5px;
+}
+
+.crosshead small {
+  color: var(--wg-muted-2, #7a8876);
+  font-size: 11.5px;
+}
+
+.crosslist {
+  margin: 4px 0 6px;
+  max-height: 120px;
+  overflow: auto;
+}
+
+.crossok {
+  margin-top: 6px;
+  font-size: 11.5px;
+  color: #3f7d5c;
+}
+
+/* 讨论卡（AI 先提问、用户点选答案） */
+.clarify {
+  border: 1px solid var(--edge-accent-line, #e8e0fb);
+  border-left: 3px solid var(--wg-purple, #6d5bb5);
+  border-radius: 10px;
+  background: var(--edge-accent-soft, #fbf9ff);
+  padding: 10px 12px;
+  margin-top: 8px;
+}
+
+.clarifysummary {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--wg-ink, #253c37);
+  margin-bottom: 6px;
+}
+
+.clarifylist {
+  margin: 0;
+  padding-left: 18px;
+}
+
+.clarifylist li {
+  margin: 6px 0;
+}
+
+.clarifyq {
+  font-size: 12.5px;
+  margin: 0 0 4px;
+  color: #3b3550;
+}
+
+.clarifychips {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.clarifychip {
+  min-height: 26px;
+  padding: 2px 10px;
+  border: 1px solid var(--wg-line-strong, #d8d3e4);
+  border-radius: 999px;
+  background: #fff;
+  color: #4a4560;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.clarifychip:hover {
+  border-color: var(--wg-purple, #6d5bb5);
+}
+
+.clarifychip.picked {
+  background: #e4dcff;
+  border-color: #6d5bb5;
+  border-width: 2px;
+  color: #35286f;
+  font-weight: 600;
+  padding: 2px 9px;
+}
+
+.clarifychip.picked::before {
+  content: '✓ ';
+  font-size: 11px;
+}
+
+/* 建议卡底部的拆分反馈 */
+.refinerow {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: 8px;
+}
+
+.refinerow button {
+  min-height: 26px;
+  padding: 2px 9px;
+  border: 1px dashed var(--wg-line-strong, #d8d3e4);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--wg-muted-2, #7a8876);
+  font-size: 11.5px;
+  cursor: pointer;
+}
+
+.refinerow button:hover {
+  border-style: solid;
+  color: var(--wg-ink, #253c37);
+  background: #faf8ff;
+}
+
+/* 建议条数多时只滚动列表，卡片本身不撑爆面板 */
+.ai .changelist,
+.hai .changelist {
+  max-height: 34vh;
+  overflow: auto;
+  scrollbar-width: thin;
+}
+
+.ai .changelist .chgtag,
+.hai .changelist .chgtag {
+  min-width: 40px;
+  text-align: center;
+}
+
+/* ------------------------------------------------------------
+   10. 移动端：对话框固定在视口底部，宽度跟着屏幕走
+   ------------------------------------------------------------ */
+@media (max-width: 800px) {
+  :root {
+    --ai-dock-compact: 66px;
+    --ai-dock-expanded: min(58vh, 400px);
+    --ai-dock-gap: 8px;
+  }
+
+  /* 页面按普通文档流排布，底部留出让对话框浮起来的空间 */
+  .workspace,
+  .workspace.expanded {
+    display: flex;
+    flex-direction: column;
+    grid-template-rows: none !important;
+    padding-bottom: calc(var(--ai-dock-compact) + 24px);
+  }
+
+  .workspace > .hai,
+  .workspace > .ai {
+    position: fixed;
+    left: 8px;
+    right: 8px;
+    transform: none;
+    width: auto;
+    z-index: 45;
+  }
+
+  .workspace > .hai .composer input,
+  .workspace > .ai .composer input {
+    font-size: 16px;
+  }
+
+  body .edge-launcher {
+    bottom: calc(var(--ai-dock-compact) + 20px);
+    right: 16px;
+  }
+}
