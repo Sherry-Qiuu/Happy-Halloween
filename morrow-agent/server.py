@@ -29,6 +29,9 @@ Agent
     GET  /api/agent/health     connection state for the UI
     POST /api/agent/chat       streaming reply (server-sent events)
     POST /api/agent/report     reflection observation, JSON
+    POST /api/agent/decompose  split a goal into ordered steps, JSON
+    POST /api/agent/replan     propose a plan for a disrupted day, JSON
+    POST /api/agent/reflection rule-based reflection facts, JSON
 
 Operations
     GET  /api/health           liveness probe for Docker / systemd
@@ -48,6 +51,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
 from urllib.parse import unquote, urlsplit
 
+import backend_services
 import deepseek
 import mock_agent
 import policy
@@ -208,6 +212,15 @@ class AgentHandler(BaseHTTPRequestHandler):
             return
         if path == "/api/agent/report":
             self._handle_report()
+            return
+        if path == "/api/agent/decompose":
+            self._handle_structured(backend_services.decompose)
+            return
+        if path == "/api/agent/replan":
+            self._handle_structured(backend_services.replan)
+            return
+        if path == "/api/agent/reflection":
+            self._handle_structured(backend_services.reflection)
             return
         routes = {
             "/api/auth/register": self._handle_register,
@@ -998,6 +1011,28 @@ class AgentHandler(BaseHTTPRequestHandler):
                 "[policy] " + json.dumps(item, ensure_ascii=False) + "\n"
             )
         self._send_json(HTTPStatus.OK, {"report": report})
+
+    def _handle_structured(self, operation: Any) -> None:
+        """Run a deterministic planning or reflection operation."""
+        if self._agent_user() is None:
+            return
+        try:
+            payload = self._read_json()
+            result = operation(payload)
+        except BadRequest as error:
+            self._send_json(HTTPStatus.BAD_REQUEST, {"error": str(error)})
+            return
+        except (ValueError, TypeError) as error:
+            self._send_json(HTTPStatus.BAD_REQUEST, {"error": str(error)})
+            return
+        except Exception as error:  # noqa: BLE001 - report, never crash
+            traceback.print_exc()
+            self._send_json(
+                HTTPStatus.INTERNAL_SERVER_ERROR,
+                {"error": f"处理失败：{type(error).__name__}"},
+            )
+            return
+        self._send_json(HTTPStatus.OK, result)
 
     # ------------------------------------------------------------------
     # Server-sent events
