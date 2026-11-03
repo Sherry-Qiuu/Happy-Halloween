@@ -322,8 +322,10 @@
       if (window.__xjReady) {
         clearInterval(timer);
         callback();
-      } else if (tries > 150) {
-        clearInterval(timer); // 15 秒还没就绪就放弃，至少本地已写入
+      } else if (tries > 400) {
+        // 40 秒还没就绪（冷启动/网络慢）：照常写入本地，别再干等
+        clearInterval(timer);
+        callback();
       }
     }, 100);
   }
