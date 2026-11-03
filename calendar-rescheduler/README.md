@@ -1,6 +1,6 @@
 # 日历重排 · 前后端设计
 
-这是「行间」的日历重排实验包：前端演示拖拽 / 缩放 / AI 对话协商，后端提供画像感知的重排策略、呼吸层和留白预算。独立于主应用，方便先评审交互与策略，再接入 `xingjian-agent`。
+这是「Morrow」的日历重排实验包：前端演示拖拽 / 缩放 / AI 对话协商，后端提供画像感知的重排策略、呼吸层和留白预算。独立于主应用，方便先评审交互与策略，再接入 `morrow-agent`。
 
 ## 目录
 
@@ -51,7 +51,7 @@ proposal = Planner(persona).propose(events, disruption)
 - `_capacity_ok`：过滤会把某天排爆的移动。
 - `bill` 输出 `slack_minutes / breathing_minutes / load_pct / breathing_loss`。
 
-## 接入 `xingjian-agent`
+## 接入 `morrow-agent`
 
 1. 后端：把 `backend/core.py` 作为重排模块；`proposal.changes` 已兼容 `protocol.py` 的 `move_event / add_event / remove_event`。
 2. 前端：把 `frontend/planner.js` 作为客户端策略，或直接调用后端 `/replan`；把 `frontend/app.js` 的拖拽与对话渲染移植到 `web/agent.js`。
@@ -65,4 +65,4 @@ proposal = Planner(persona).propose(events, disruption)
 
 ---
 
-仓库名 `Happy-Halloween` 只是代号，主项目仍是「行间」。
+仓库名 `Happy-Halloween` 只是代号，主项目仍是「Morrow」。

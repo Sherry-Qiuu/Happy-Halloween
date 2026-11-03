@@ -1,6 +1,6 @@
 # 文档索引
 
-「行间」的代码在 [`xingjian-agent/`](../xingjian-agent) 与 [`calendar-rescheduler/`](../calendar-rescheduler)，这里放**代码之前的判断**：需求从哪来、策略为什么这么定、哪些结论已经被代码兜住。
+「Morrow」的代码在 [`morrow-agent/`](../morrow-agent) 与 [`calendar-rescheduler/`](../calendar-rescheduler)，这里放**代码之前的判断**：需求从哪来、策略为什么这么定、哪些结论已经被代码兜住。
 
 ## 三条阅读路线
 
@@ -15,7 +15,7 @@
 
 | 文档 | 是什么 | 体量 | 结论落到哪 |
 | --- | --- | --- | --- |
-| [AI 运行规范 v1.0](ai-runtime-spec.md) | 模型调用链、提案协议、画像与策略约束、上下文与延迟预算、降级矩阵、评测门槛 | 14 KB | `prompts.py` / `protocol.py` / `policy.py` / `sched_profile.py`；配套 [`scripts/ai_eval.py`](../xingjian-agent/scripts/ai_eval.py) |
+| [AI 运行规范 v1.0](ai-runtime-spec.md) | 模型调用链、提案协议、画像与策略约束、上下文与延迟预算、降级矩阵、评测门槛 | 14 KB | `prompts.py` / `protocol.py` / `policy.py` / `sched_profile.py`；配套 [`scripts/ai_eval.py`](../morrow-agent/scripts/ai_eval.py) |
 | [日历灵活调整 · 用户需求全景 v0.1](research/日历灵活调整_用户需求全景_v0.1.md) | 48 个模拟用户 × 3 篇变化日记 → 10 类 / 84 条需求 | 47 KB | 交互与状态模型；`tier` 分级、账单、锁定 |
 | [用户画像类型 · 行为组 · 排布调整 v0.1](research/用户画像类型与排布策略.md) | 信号 → 维度 → 八种画像 → 六维字段；附录 C 是规则到代码的映射 | 49 KB | `sched_profile.py`、`docs/profile-rules.md` |
 | [28 天压力模拟与二阶需求 v0.2](research/日历灵活调整_压力模拟与二阶需求_v0.2.md) | 12 类人 × 5 代策略 × 32 随机种子 × 28 天 | 23 KB | 八个产品动作；`bill`、恢复模式、确认预算 |

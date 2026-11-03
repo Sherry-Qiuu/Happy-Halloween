@@ -16,7 +16,7 @@ except ImportError:  # direct execution from rescheduler/
 # the real wire validator lives in the agent; use it so the test cannot drift
 _base = os.path.dirname(os.path.abspath(__file__))
 for _rel in ("..", os.path.join("..", "..")):
-    _candidate = os.path.abspath(os.path.join(_base, _rel, "xingjian-agent"))
+    _candidate = os.path.abspath(os.path.join(_base, _rel, "morrow-agent"))
     if os.path.isdir(_candidate):
         sys.path.insert(0, _candidate)
         break

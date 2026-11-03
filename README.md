@@ -1,4 +1,4 @@
-# 行间
+# Morrow
 
 > 一个把「计划 → 执行 → 变化 → 反思」做成闭环的日历与待办原型。
 > AI 给建议和代价账单，点「采用」才真正改日程。
@@ -10,11 +10,11 @@
 
 **在线演示**（GitHub Pages 从 `main` 发布；本地演示模式，数据只留在浏览器）：<https://sherry-qiuu.github.io/Happy-Halloween/>
 
-**完整版**（账号 + AI）：`cd xingjian-agent && python server.py` → <http://127.0.0.1:8000>
+**完整版**（账号 + AI）：`cd morrow-agent && python server.py` → <http://127.0.0.1:8000>
 
 怎么读这份 README：只想看产品，读「这是什么」到「它不做什么」就够；想跑起来直接跳到「三个入口」；工程细节从「项目生态」往后都是。
 
-![行间 · 今天](docs/assets/home-1440.png)
+![Morrow · 今天](docs/assets/home-1440.png)
 
 <sub>图来自 V0.13「暖纸」皮肤的设计预览。当前版本首页把日历铺成连续三天并排，「计划 / 实际」两个视图切换。</sub>
 
@@ -24,7 +24,7 @@
 
 主流日历在「变化」这一步只有两种反应：假装没发生，或者把整个下午重排一遍。前者要用户自己收拾，后者让用户失去对时间的掌控感。
 
-行间的立场是三条：
+Morrow 的立场是三条：
 
 1. **优化的目标是「改得少」，不是「排得下」。** 全局最优会把熟悉的一天整体重写，用户感知到的不是智能，是失控。所以每次最多 4 处改动，并附一份账单：动了几件、碰了谁的承诺、还剩多少留白。
 2. **AI 不替你按确认。** 方案、备选 A/B/C、解释都由 AI 起草，但写入数据必须点「采用」，而且可撤销。
@@ -81,8 +81,8 @@
 
 | 入口 | 命令 | 需要什么 | 拿到什么 |
 | --- | --- | --- | --- |
-| 静态演示 | 双击 `xingjian-agent/web/index.html` | 浏览器 | 全部界面；数据在 `localStorage`，AI 走离线示例 |
-| 完整版 | `cd xingjian-agent`<br>`python server.py` | Python 3.10+，**不用装依赖** | <http://127.0.0.1:8000>，账号 + 真实 AI + 跨设备同步 |
+| 静态演示 | 双击 `morrow-agent/web/index.html` | 浏览器 | 全部界面；数据在 `localStorage`，AI 走离线示例 |
+| 完整版 | `cd morrow-agent`<br>`python server.py` | Python 3.10+，**不用装依赖** | <http://127.0.0.1:8000>，账号 + 真实 AI + 跨设备同步 |
 | 重排设计包 | 双击 `calendar-rescheduler/frontend/index.html` | 浏览器 | 只演重排：拖拽、冲突、P1–P8 切换、方案卡 |
 
 GitHub Pages 从 `main` 自动发布同一份静态文件（`.github/workflows/pages.yml`）。Pages 上没有 `/api/*`，`pages-bootstrap.js` 会自动进入本地演示模式。
@@ -108,8 +108,8 @@ GitHub Pages 从 `main` 自动发布同一份静态文件（`.github/workflows/p
 | ① 研究 | [`docs/research/`](docs/research/) | 需求全景、画像类型学、冷启动报告 | 文档 |
 | ② 模拟 | [`docs/research/sim/`](docs/research/sim/) | 28 天日历压力模拟，纯标准库可复现 | 在 `docs/research/` 下跑 `python sim/calendar_stress.py` |
 | ③ 策略设计 | [`calendar-rescheduler/`](calendar-rescheduler/) | 重排内核 + 交互 Demo + [`STRATEGY.md`](calendar-rescheduler/backend/STRATEGY.md) | 在 `calendar-rescheduler/` 下跑 `python backend/core.py` |
-| ④ 产品 | [`xingjian-agent/`](xingjian-agent/) | 前端 19 个脚本 + 后端 11 个模块 | `python server.py` |
-| ⑤ 部署 | [`xingjian-agent/deploy/`](xingjian-agent/deploy/) | 一键脚本、Caddy、nginx、systemd、备份 | `sudo bash deploy/bootstrap.sh <域名>` |
+| ④ 产品 | [`morrow-agent/`](morrow-agent/) | 前端 19 个脚本 + 后端 11 个模块 | `python server.py` |
+| ⑤ 部署 | [`morrow-agent/deploy/`](morrow-agent/deploy/) | 一键脚本、Caddy、nginx、systemd、备份 | `sudo bash deploy/bootstrap.sh <域名>` |
 | ⑥ 发布 | [`.github/workflows/pages.yml`](.github/workflows/pages.yml) | 推送 `main` 即发布静态站点 | 自动 |
 | ⑦ PRD | [`docs/prd/`](docs/prd/) | AI 目标陪练闭环的界面级需求与验收 | 文档 |
 
@@ -131,7 +131,7 @@ GitHub Pages 从 `main` 自动发布同一份静态文件（`.github/workflows/p
 | 语气规则不可靠就代码兜 | `policy.apply()`：危机 > 事实 > 语气，按分句裁决 |
 | 留白是硬约束，不是偏好 | `daily_ratio`（62–82%）、`slack_reserve`（45–90 分钟）、`_capacity_ok()`、`ensure_breathing()` |
 
-这些规则的完整条款号在 [`xingjian-agent/docs/profile-rules.md`](xingjian-agent/docs/profile-rules.md)（P-0…P-10）。
+这些规则的完整条款号在 [`morrow-agent/docs/profile-rules.md`](morrow-agent/docs/profile-rules.md)（P-0…P-10）。
 
 ## 架构 · 前端（无框架、无构建）
 
@@ -166,8 +166,8 @@ GitHub Pages 从 `main` 自动发布同一份静态文件（`.github/workflows/p
 ### 数据与存储
 
 - 客户端状态是一个全局 `data`：`tasks`、`goals`（含里程碑、`projectTasks`、依赖边）、`reviews`、`extra`、`schedule`；首页另有 `hs`（`blocks` + `actual`）。
-- 存储键：`xingjian-v02:<userId>`（账号数据）、`xingjian-home-v05`、`xingjian-workspace-v11`、`xingjian-agent-chats-v1:<scope>`、`edge-fluent-appearance:v1`。
-- `save()` 先写 `localStorage`，再 `XJ.queueSave()` 500 ms 防抖 `PUT /api/data`；失败时把改动存进 `xingjian-pending:<scope>`，下次登录补传。
+- 存储键：`morrow-v02:<userId>`（账号数据）、`morrow-home-v05`、`morrow-workspace-v11`、`morrow-agent-chats-v1:<scope>`、`edge-fluent-appearance:v1`。
+- `save()` 先写 `localStorage`，再 `Morrow.queueSave()` 500 ms 防抖 `PUT /api/data`；失败时把改动存进 `morrow-pending:<scope>`，下次登录补传。
 - 已知问题：`data.schedule`（Agent 视图）与 `hs.blocks`（首页视图）是两套并行日历存储，极端情况下会不一致；见[已知边界](#已知边界)。
 
 ## 架构 · 后端（纯标准库）
@@ -301,18 +301,18 @@ GitHub Pages 从 `main` 自动发布同一份静态文件（`.github/workflows/p
 
 | 组 | 关键变量 | 默认 |
 | --- | --- | --- |
-| 服务 | `HOST` / `PORT` / `XINGJIAN_TRUST_PROXY` / `COOKIE_SECURE` | `127.0.0.1` / `8000` / `0` / `0` |
-| 账号 | `XINGJIAN_DATA_DIR` / `XINGJIAN_SESSION_DAYS` / `XINGJIAN_ALLOW_REGISTRATION` / `XINGJIAN_REQUIRE_EMAIL` | `../server information` / `7` / `1` / `1` |
+| 服务 | `HOST` / `PORT` / `MORROW_TRUST_PROXY` / `COOKIE_SECURE` | `127.0.0.1` / `8000` / `0` / `0` |
+| 账号 | `MORROW_DATA_DIR` / `MORROW_SESSION_DAYS` / `MORROW_ALLOW_REGISTRATION` / `MORROW_REQUIRE_EMAIL` | `../server information` / `7` / `1` / `1` |
 | 邮箱 | `MAIL_TRANSPORT` / `SMTP_HOST` / `SMTP_USER` / `SMTP_PASSWORD` | `smtp` / `smtp.qq.com` / 空 / 空 |
 | AI | `DEEPSEEK_API_KEY` / `DEEPSEEK_MODEL` / `AGENT_MOCK` / `AGENT_RATE_LIMIT` | 空 / 见 `.env.example` / `0` / `40` |
 | 验证码 | `EMAIL_CODE_TTL` / `EMAIL_CODE_RESEND` / `EMAIL_CODE_MAX_ATTEMPTS` | `600` / `60` / `5` |
 
-完整 30 项与环境变量优先级见 [`xingjian-agent/.env.example`](xingjian-agent/.env.example) 与 [`xingjian-agent/README.md`](xingjian-agent/README.md)。本地想跳过邮箱验证：`XINGJIAN_REQUIRE_EMAIL=0`；想不发信只看验证码：`MAIL_TRANSPORT=console`，验证码会打印在启动终端。
+完整 30 项与环境变量优先级见 [`morrow-agent/.env.example`](morrow-agent/.env.example) 与 [`morrow-agent/README.md`](morrow-agent/README.md)。本地想跳过邮箱验证：`MORROW_REQUIRE_EMAIL=0`；想不发信只看验证码：`MAIL_TRANSPORT=console`，验证码会打印在启动终端。
 
 ## 测试
 
 ```powershell
-cd xingjian-agent
+cd morrow-agent
 python -m unittest discover -s tests   # 108 个后端测试
 python scripts/ai_eval.py              # 44 项 AI 运行期用例 + 预算门槛
 node tests/dom_smoke.mjs               # 22 项 AI 面板前端链路
@@ -321,7 +321,7 @@ node tests/auth_smoke.mjs              # 17 项登录 / 注册 / 找回链路
 
 后端覆盖账号存储、会话失效、改密踢下线、数据隔离、删号、跨站拒绝和 HTTP 全链路；前端冒烟测试不装 jsdom，而是用 DOM 桩在 `node:vm` 里跑真实 `agent.js` / `auth.js`，能挡住接线错误，但替代不了浏览器看样式。
 
-注意：后端测试默认要求邮箱验证开启。本机 `.env` 若写了 `XINGJIAN_REQUIRE_EMAIL=0`，会有 9 项注册验证码相关测试失败，跑测试时覆盖成 `1` 即可（`$env:XINGJIAN_REQUIRE_EMAIL='1'`）。
+注意：后端测试默认要求邮箱验证开启。本机 `.env` 若写了 `MORROW_REQUIRE_EMAIL=0`，会有 9 项注册验证码相关测试失败，跑测试时覆盖成 `1` 即可（`$env:MORROW_REQUIRE_EMAIL='1'`）。
 
 重排包另有测试（9 项策略测试 + 8 项前端内核测试）：
 
@@ -332,16 +332,16 @@ cd calendar-rescheduler/frontend && node test_planner.js
 
 ## 部署
 
-以下命令都在 `xingjian-agent/` 下执行。
+以下命令都在 `morrow-agent/` 下执行。
 
 | 方式 | 命令 | 自动 HTTPS |
 | --- | --- | --- |
 | 一键脚本（Ubuntu / Debian） | `sudo bash deploy/bootstrap.sh <域名>` | 是（Caddy） |
 | Docker + Caddy | `docker compose up -d --build` | 是 |
-| Docker + nginx | 见 [`deploy/nginx.conf`](xingjian-agent/deploy/nginx.conf) | 用 certbot |
-| systemd（不用容器） | 见 [`deploy/xingjian.service`](xingjian-agent/deploy/xingjian.service) | 反代决定 |
+| Docker + nginx | 见 [`deploy/nginx.conf`](morrow-agent/deploy/nginx.conf) | 用 certbot |
+| systemd（不用容器） | 见 [`deploy/morrow.service`](morrow-agent/deploy/morrow.service) | 反代决定 |
 
-上线前必看的三条：`COOKIE_SECURE=1`（HTTPS 下，否则浏览器不存 cookie）、`XINGJIAN_TRUST_PROXY=1`（反代后限流才拿得到真实 IP）、建好账号后 `XINGJIAN_ALLOW_REGISTRATION=0`。部署后从任意机器验收：
+上线前必看的三条：`COOKIE_SECURE=1`（HTTPS 下，否则浏览器不存 cookie）、`MORROW_TRUST_PROXY=1`（反代后限流才拿得到真实 IP）、建好账号后 `MORROW_ALLOW_REGISTRATION=0`。部署后从任意机器验收：
 
 ```bash
 python scripts/verify_deploy.py <域名>   # DNS → TLS → 登录页 → API，9 项检查
@@ -353,7 +353,7 @@ SSE 必须关掉反代缓冲（Caddy 的 `flush_interval -1`、nginx 的 `proxy_
 
 ```text
 Happy-Halloween/
-├─ xingjian-agent/              产品本体：前端 + Python 服务 + 部署
+├─ morrow-agent/              产品本体：前端 + Python 服务 + 部署
 │  ├─ web/                      唯一前端入口与 19 个脚本
 │  ├─ docs/profile-rules.md     画像与 Agent 行为规则（P-0…P-10）
 │  ├─ tests/                    108 个后端测试 + 2 个 DOM 冒烟测试
@@ -398,9 +398,9 @@ Happy-Halloween/
 | [`docs/prd/README.md`](docs/prd/README.md) | AI 目标陪练闭环：界面级 PRD 与验收清单 |
 | [`calendar-rescheduler/backend/STRATEGY.md`](calendar-rescheduler/backend/STRATEGY.md) | 六步算法、P1–P8 参数、A18–A20 动作、失败模式 |
 | [`calendar-rescheduler/frontend/README.md`](calendar-rescheduler/frontend/README.md) | 拖拽与对话协商的交互说明 |
-| [`xingjian-agent/README.md`](xingjian-agent/README.md) | 账号、邮箱、API、部署与常见问题（长手册） |
-| [`xingjian-agent/docs/profile-rules.md`](xingjian-agent/docs/profile-rules.md) | 画像与输出规则的条款原文 |
+| [`morrow-agent/README.md`](morrow-agent/README.md) | 账号、邮箱、API、部署与常见问题（长手册） |
+| [`morrow-agent/docs/profile-rules.md`](morrow-agent/docs/profile-rules.md) | 画像与输出规则的条款原文 |
 
 ---
 
-仓库名 `Happy-Halloween` 只是代号，项目本身叫「行间」。界面与代码里的 `xingjian` / `xj` 是同一个名字的拼音缩写。
+仓库名 `Happy-Halloween` 只是代号，项目本身叫 Morrow。代码里的 `morrow-` 前缀（目录、存储键、环境变量、服务名）都指这一个项目。

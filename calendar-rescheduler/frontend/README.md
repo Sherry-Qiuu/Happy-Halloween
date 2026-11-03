@@ -35,10 +35,10 @@ node --check planner.js
 node --check app.js
 ```
 
-## 接入现有 `xingjian-agent`
+## 接入现有 `morrow-agent`
 
 1. 把 `planner.js` 作为纯策略模块引入；`Rescheduler.propose()` 接受 `base / draft / draggedId / persona / constraints`。
-2. 把 `app.js` 里的拖拽与聊天渲染移植到 `xingjian-agent/web/agent.js` 的日历与 AI 面板。
+2. 把 `app.js` 里的拖拽与聊天渲染移植到 `morrow-agent/web/agent.js` 的日历与 AI 面板。
 3. 应用方案时，把 `plan.schedule` 映射回 `data.schedule`；或把 `plan.changeList` 转成 `protocol.py` 的 `move_event / add_event / remove_event`。
 4. 画像参数来自 `sched_profile.scheduling_params()`，替换 `PERSONAS` 的默认权重即可。
 

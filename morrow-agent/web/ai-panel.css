@@ -1,0 +1,27 @@
+/* Review pages: let the human-AI conversation fill the whole AI band,
+ * instead of sitting in a narrow centered column.
+ */
+body.cleanpage .ai.has-replies .aibody {
+  align-items: stretch;
+  text-align: left;
+}
+
+body.cleanpage .ai.has-replies .aibody > .message,
+body.cleanpage .ai.has-replies .aibody > .proposal {
+  width: 100%;
+  max-width: none;
+}
+
+body.cleanpage .ai .composer {
+  width: 100%;
+  max-width: none;
+  margin: 10px 0 0;
+}
+
+@media (max-width: 800px) {
+  body.cleanpage .ai.has-replies .aibody > .message,
+  body.cleanpage .ai.has-replies .aibody > .proposal,
+  body.cleanpage .ai .composer {
+    width: 100%;
+  }
+}

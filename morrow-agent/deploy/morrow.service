@@ -1,0 +1,45 @@
+# /etc/systemd/system/morrow.service
+#
+# Bare-metal deployment (no Docker):
+#   sudo useradd --system --home /opt/morrow --shell /usr/sbin/nologin \
+#        morrow
+#   sudo mkdir -p /opt/morrow /etc/morrow
+#   sudo cp -r ./* /opt/morrow/
+#   sudo cp .env.example /etc/morrow/morrow.env   # then edit it
+#   sudo chown -R morrow:morrow /opt/morrow
+#   sudo systemctl daemon-reload && sudo systemctl enable --now morrow
+#
+# The unit creates /var/lib/morrow through StateDirectory; set
+# MORROW_DATA_DIR=/var/lib/morrow in morrow.env.
+
+[Unit]
+Description=Morrow planning app (accounts, data, DeepSeek agent)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=morrow
+Group=morrow
+WorkingDirectory=/opt/morrow
+EnvironmentFile=/etc/morrow/morrow.env
+Environment=PYTHONUNBUFFERED=1
+Environment=MORROW_DATA_DIR=/var/lib/morrow
+ExecStart=/usr/bin/python3 /opt/morrow/server.py
+Restart=on-failure
+RestartSec=3
+
+StateDirectory=morrow
+StateDirectoryMode=0700
+UMask=0077
+
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/morrow
+CapabilityBoundingSet=
+AmbientCapabilities=
+
+[Install]
+WantedBy=multi-user.target

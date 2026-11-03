@@ -1,6 +1,6 @@
 # AI 运行规范
 
-> v1.0 · 2026-11-01 · 适用 [`xingjian-agent/`](../xingjian-agent) 的 AI 面板（流式对话 + 反思报告）
+> v1.0 · 2026-11-01 · 适用 [`morrow-agent/`](../morrow-agent) 的 AI 面板（流式对话 + 反思报告）
 >
 > 一句话：**模型负责起草，服务端负责裁决，用户负责确认。** 规则由代码兜底，延迟和成本各有预算，改任何一环都要过评测门槛。
 
@@ -8,10 +8,10 @@
 
 | 管 | 不管 |
 | --- | --- |
-| 模型调用链路、提示词与上下文预算 | 界面样式与组件（见 [`warmgrid-skin.css`](../xingjian-agent/web/warmgrid-skin.css)） |
+| 模型调用链路、提示词与上下文预算 | 界面样式与组件（见 [`warmgrid-skin.css`](../morrow-agent/web/warmgrid-skin.css)） |
 | 提案协议与白名单 | 重排算法与打分（见 [`STRATEGY.md`](../calendar-rescheduler/backend/STRATEGY.md)） |
-| 画像写入、输出策略、降级与观测 | 账号、会话、邮箱（见 [`xingjian-agent/README.md`](../xingjian-agent/README.md)） |
-| 改动流程与评测门槛 | 部署与反代（见 `xingjian-agent/deploy/`） |
+| 画像写入、输出策略、降级与观测 | 账号、会话、邮箱（见 [`morrow-agent/README.md`](../morrow-agent/README.md)） |
+| 改动流程与评测门槛 | 部署与反代（见 `morrow-agent/deploy/`） |
 
 读者：要改 `prompts.py`、`protocol.py`、`policy.py`、`sched_profile.py`、`deepseek.py`、`server.py` 或 `web/agent.js` 的人。
 
@@ -156,7 +156,7 @@ T(回放) = ceil(正文字数 / 4) × 12 ms
 必须跑的四条命令：
 
 ```bash
-cd xingjian-agent
+cd morrow-agent
 python -m unittest discover -s tests   # 108 项，含画像与策略
 python scripts/ai_eval.py              # 44 项运行期用例 + 预算
 node tests/dom_smoke.mjs               # 22 项前端链路
@@ -206,7 +206,7 @@ python scripts/ai_eval.py --json out.json # 附带机器可读结果
 | 文档 | 定位 |
 | --- | --- |
 | 本文 | 运行期契约：约束、预算、降级、门槛 |
-| [`xingjian-agent/docs/profile-rules.md`](../xingjian-agent/docs/profile-rules.md) | 画像与输出策略的条款原文（P-0…P-10、7.x） |
+| [`morrow-agent/docs/profile-rules.md`](../morrow-agent/docs/profile-rules.md) | 画像与输出策略的条款原文（P-0…P-10、7.x） |
 | [`calendar-rescheduler/backend/STRATEGY.md`](../calendar-rescheduler/backend/STRATEGY.md) | 重排算法、P1–P8 参数、失败模式 |
-| [`xingjian-agent/README.md`](../xingjian-agent/README.md) | API、配置项、部署与常见问题 |
+| [`morrow-agent/README.md`](../morrow-agent/README.md) | API、配置项、部署与常见问题 |
 | [`docs/README.md`](README.md) | 研究证据与设计取舍的来源 |

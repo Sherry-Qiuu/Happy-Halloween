@@ -21,7 +21,7 @@
 2. 硬约束永不违反：H0 / 锁定 / 时间边界 / 截止。
 3. 改动尽量少，目标尽量保，社交尽量不欠。
 4. 同一场景下，不同画像给出不同建议（P1 保目标，P2 保稳定，P7 用叠加）。
-5. 输出可直接被 `xingjian-agent` 的 `sanitize_changes` 接受（最多 4 条）。
+5. 输出可直接被 `morrow-agent` 的 `sanitize_changes` 接受（最多 4 条）。
 
 **非目标**
 
@@ -53,7 +53,7 @@
 
 - `hardness`：H0–H5；H0 或 `locked=true` 永不移动。
 - `start`：分钟或小时；适配器会统一成分钟。
-- `persona_type`：P1–P8；`scheduling_params` 可直接来自 `xingjian-agent/sched_profile.py` 的 `scheduling_params(profile)`。
+- `persona_type`：P1–P8；`scheduling_params` 可直接来自 `morrow-agent/sched_profile.py` 的 `scheduling_params(profile)`。
 
 ### 输出
 
@@ -293,7 +293,7 @@ p_accept = sigmoid(1.0 + accept_bias
 
 ---
 
-## 7 接入 `xingjian-agent`
+## 7 接入 `morrow-agent`
 
 ### 7.1 最小接入
 
