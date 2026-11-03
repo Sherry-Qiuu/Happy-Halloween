@@ -24,8 +24,7 @@ services:
     envVars:
       - key: HOST
         value: 0.0.0.0
-      - key: PORT
-        value: "8000"
+      # 不要写死 PORT：Render 会注入自己的端口，写死会导致健康检查失败
       - key: XINGJIAN_DATA_DIR
         value: /data
       # 公网必须用 HTTPS Cookie；本地调试才设 0
