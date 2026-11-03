@@ -242,49 +242,45 @@
     });
   }
 
-  function looksLikeStock(home) {
-    const blocks = blocksOf(home);
-    if (!blocks.length) return true; // 空日历也算“没动过”
-    if (blocks.length > 4) return false;
-    return blocks.every((block) => STOCK_TITLES.has(String(block.title || '')));
+  function dataKeyName() {
+    return window.XJ && XJ.dataKey ? XJ.dataKey() : 'xingjian-v02';
   }
 
-  function shouldSeed() {
-    if (new URLSearchParams(location.search).get('demo') === '1') return true;
-    let current = null;
-    try {
-      current = JSON.parse(localStorage.getItem(HOME_KEY) || 'null');
-    } catch (_error) {
-      current = null;
-    }
-    // 已经是演示数据：日期还新鲜就不重复种；演示块全过期了就按今天重排一次
-    if (looksLikeDemo(current)) {
-      const dates = blocksOf(current).map((block) => String(block.date || '')).filter(Boolean).sort();
-      const newest = dates[dates.length - 1] || '';
-      return newest < window.XJ_TODAY;
-    }
-    // 还是原型默认那几块（或空）：补成完整演示场景
-    if (looksLikeStock(current)) return true;
-    // 有自己排的内容：尊重用户，不动
-    return false;
+  /* 空白起点：新账号、或用户主动 ?blank=1 时使用 */
+  function seedBlank() {
+    localStorage.setItem(
+      HOME_KEY,
+      JSON.stringify({ blocks: [], tasks: [], actual: [], tags: TAGS })
+    );
+    localStorage.setItem(
+      dataKeyName(),
+      JSON.stringify({
+        goals: [],
+        reviews: {},
+        tasks: [],
+        extra: [],
+        name: '',
+        reminder: false,
+        moved: true,
+      })
+    );
+    localStorage.setItem(FLAG, '0');
   }
 
-  function seed() {
+  function seedDemo() {
     localStorage.setItem(
       HOME_KEY,
       JSON.stringify({ blocks: BLOCKS, tasks: TASKS, actual: ACTUAL, tags: TAGS })
     );
-
-    const dataKey = window.XJ && XJ.dataKey ? XJ.dataKey() : 'xingjian-v02';
     let existing = null;
     try {
-      existing = JSON.parse(localStorage.getItem(dataKey) || 'null');
+      existing = JSON.parse(localStorage.getItem(dataKeyName()) || 'null');
     } catch (_error) {
       existing = null;
     }
     const base = existing && typeof existing === 'object' ? existing : {};
     localStorage.setItem(
-      dataKey,
+      dataKeyName(),
       JSON.stringify({
         ...base,
         goals: GOALS,
@@ -305,14 +301,70 @@
     localStorage.setItem(FLAG, '1');
   }
 
-  try {
-    if (!shouldSeed()) return;
-    seed();
+  function reloadOnce() {
     const marker = 'xingjian-demo-reloading';
-    if (!sessionStorage.getItem(marker)) {
-      sessionStorage.setItem(marker, '1');
-      location.reload();
+    if (sessionStorage.getItem(marker)) return false;
+    sessionStorage.setItem(marker, '1');
+    location.reload();
+    return true;
+  }
+
+  /* 显式切换模式：先写数据、去掉 URL 参数，再刷新一次，
+     这样刷新后不会再命中 ?demo/?blank，避免反复刷新 */
+  function switchMode(write) {
+    write();
+    try {
+      history.replaceState(null, '', location.pathname);
+    } catch (_error) {
+      /* file:// 下 replaceState 可能不可用，忽略 */
     }
+    sessionStorage.removeItem('xingjian-demo-reloading');
+    location.reload();
+  }
+
+  try {
+    const params = new URLSearchParams(location.search);
+    const wantsDemo = params.get('demo') === '1';
+    const wantsBlank = params.get('blank') === '1';
+    const demoKnown = localStorage.getItem(FLAG) === '1';
+    const hasHome = localStorage.getItem(HOME_KEY) !== null;
+
+    let current = null;
+    try {
+      current = JSON.parse(localStorage.getItem(HOME_KEY) || 'null');
+    } catch (_error) {
+      current = null;
+    }
+
+    // 1) 主动要求演示场景：种一份完整数据
+    if (wantsDemo) {
+      switchMode(seedDemo);
+      return;
+    }
+
+    // 2) 主动要求清空：回到真正的 0
+    if (wantsBlank) {
+      switchMode(seedBlank);
+      return;
+    }
+
+    // 3) 全新浏览器（没有本地数据）：从 0 开始，不塞演示数据
+    if (!hasHome) {
+      switchMode(seedBlank);
+      return;
+    }
+
+    // 4) 之前用 ?demo=1 打开过：保持演示模式，只在日期过期时按今天重排
+    if (demoKnown && looksLikeDemo(current)) {
+      const dates = blocksOf(current).map((block) => String(block.date || '')).filter(Boolean).sort();
+      const newest = dates[dates.length - 1] || '';
+      if (newest < window.XJ_TODAY) {
+        seedDemo();
+        reloadOnce();
+      }
+    }
+
+    // 5) 其它情况（用户自己排过内容）：什么都不做，尊重用户数据
   } catch (error) {
     console.warn('[demo] seed failed', error);
   }
