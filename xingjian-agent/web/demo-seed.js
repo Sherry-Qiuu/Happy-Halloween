@@ -309,17 +309,60 @@
     return true;
   }
 
-  /* 显式切换模式：先写数据、去掉 URL 参数，再刷新一次，
-     这样刷新后不会再命中 ?demo/?blank，避免反复刷新 */
-  function switchMode(write) {
-    write();
-    try {
-      history.replaceState(null, '', location.pathname);
-    } catch (_error) {
-      /* file:// 下 replaceState 可能不可用，忽略 */
+  /* 等登录流程跑完（auth.js 会先把服务端数据写回本地，
+     如果我们在那之前写入演示数据，会被服务端的空数据覆盖） */
+  function whenReady(callback) {
+    if (window.__xjReady) {
+      callback();
+      return;
     }
-    sessionStorage.removeItem('xingjian-demo-reloading');
-    location.reload();
+    let tries = 0;
+    const timer = setInterval(function () {
+      tries += 1;
+      if (window.__xjReady) {
+        clearInterval(timer);
+        callback();
+      } else if (tries > 150) {
+        clearInterval(timer); // 15 秒还没就绪就放弃，至少本地已写入
+      }
+    }, 100);
+  }
+
+  function pushToServer() {
+    const user = window.XJ && XJ.getUser ? XJ.getUser() : null;
+    if (!user) return Promise.resolve();
+    const key = window.XJ && XJ.dataKey ? XJ.dataKey() : 'xingjian-v02';
+    let snapshot = null;
+    try {
+      snapshot = JSON.parse(localStorage.getItem(key) || 'null');
+    } catch (_error) {
+      snapshot = null;
+    }
+    if (!snapshot) return Promise.resolve();
+    return fetch('/api/data', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'same-origin',
+      body: JSON.stringify({ data: snapshot }),
+    }).catch(function () {
+      /* 离线场景忽略：本地已经写好，下次保存会补上 */
+    });
+  }
+
+  /* 显式切换模式：等登录就绪 → 写数据 → 推给服务端 → 去掉 URL 参数 → 刷新 */
+  function switchMode(write) {
+    whenReady(function () {
+      write();
+      Promise.resolve(pushToServer()).then(function () {
+        try {
+          history.replaceState(null, '', location.pathname);
+        } catch (_error) {
+          /* file:// 下 replaceState 可能不可用，忽略 */
+        }
+        sessionStorage.removeItem('xingjian-demo-reloading');
+        location.reload();
+      });
+    });
   }
 
   try {
