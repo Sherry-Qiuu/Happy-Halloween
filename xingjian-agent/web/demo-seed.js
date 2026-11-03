@@ -17,6 +17,8 @@
   'use strict';
 
   const FLAG = 'xingjian-demo-seeded-v2';
+  const WANT_DEMO = 'xingjian-want-demo';
+  const WANT_BLANK = 'xingjian-want-blank';
   const HOME_KEY = 'xingjian-home-v05';
 
   const T = (offset) => window.xjShift(window.XJ_TODAY, offset);
@@ -353,6 +355,8 @@
 
   /* 显式切换模式：等登录就绪 → 写数据 → 推给服务端 → 去掉 URL 参数 → 刷新 */
   function switchMode(write) {
+    sessionStorage.removeItem(WANT_DEMO);
+    sessionStorage.removeItem(WANT_BLANK);
     whenReady(function () {
       write();
       Promise.resolve(pushToServer()).then(function () {
@@ -369,8 +373,12 @@
 
   try {
     const params = new URLSearchParams(location.search);
-    const wantsDemo = params.get('demo') === '1';
-    const wantsBlank = params.get('blank') === '1';
+    // 登录流程会用 location.replace('?signed=1') 跳一次，参数会丢，
+    // 所以显式请求先记到 sessionStorage，跳转后还能接着办。
+    if (params.get('demo') === '1') sessionStorage.setItem(WANT_DEMO, '1');
+    if (params.get('blank') === '1') sessionStorage.setItem(WANT_BLANK, '1');
+    const wantsDemo = sessionStorage.getItem(WANT_DEMO) === '1';
+    const wantsBlank = sessionStorage.getItem(WANT_BLANK) === '1';
     const demoKnown = localStorage.getItem(FLAG) === '1';
     const hasHome = localStorage.getItem(HOME_KEY) !== null;
 
