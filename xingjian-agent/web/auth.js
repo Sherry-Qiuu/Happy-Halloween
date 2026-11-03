@@ -228,7 +228,8 @@
       saving: '保存中…',
       error: '未同步',
       expired: '登录已过期',
-      local: '本地演示'
+      local: '本地演示',
+      offline: '网络不稳'
     };
     element.textContent = labels[next] || '已同步';
     element.setAttribute('data-state', next);
@@ -437,6 +438,27 @@
     saveTimer = setTimeout(flushSave, SAVE_DELAY);
   }
 
+  let retryTimer = null;
+  let retryDelay = 5000;
+
+  function scheduleRetry() {
+    if (retryTimer) return;
+    retryTimer = setTimeout(function () {
+      retryTimer = null;
+      retryDelay = Math.min(60000, retryDelay * 2);
+      flushSave();
+    }, retryDelay);
+  }
+
+  window.addEventListener('online', function () {
+    retryDelay = 5000;
+    flushSave();
+  });
+
+  document.addEventListener('visibilitychange', function () {
+    if (!document.hidden) flushSave();
+  });
+
   async function flushSave() {
     if (saving || !dirty || localMode || !currentUser) return;
     saving = true;
@@ -450,6 +472,11 @@
       });
       lastSavedAt = payload.updated_at || '';
       removeStorage(pendingKey());
+      retryDelay = 5000;
+      if (retryTimer) {
+        clearTimeout(retryTimer);
+        retryTimer = null;
+      }
       setSync('synced');
     } catch (error) {
       writeStorage(pendingKey(), JSON.stringify(snapshot));
@@ -460,11 +487,19 @@
           message: '登录已过期，请重新登录。页面里的改动仍在本地。'
         });
       } else {
-        setSync('error');
+        // 网络抖动、隧道断了、5xx 都算“暂时同步不上”：
+        // 改动已经在本地和 pending 里，恢复后自动补传，不要吓用户。
+        const transient = !error.status || error.status >= 500;
+        setSync(transient ? 'offline' : 'error');
         console.error('[xingjian] save failed', error);
         if (typeof toast === 'function') {
-          toast('同步失败：' + error.message);
+          toast(
+            transient
+              ? '网络不稳，改动已先存在本地，恢复后会自动补传'
+              : '同步失败：' + error.message
+          );
         }
+        if (transient) scheduleRetry();
       }
     } finally {
       saving = false;

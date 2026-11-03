@@ -144,6 +144,10 @@ class AgentServer(ThreadingHTTPServer):
 
     daemon_threads = True
     allow_reuse_address = True
+    # 浏览器一次会并发拉几十个静态文件；反向代理/隧道也会复用大量连接。
+    # socketserver 默认 backlog 只有 5，容易被瞬间打满后表现为「连接被拒绝」
+    # （对外看就是 Cloudflare 530）。这里放大到 256。
+    request_queue_size = 256
 
     def __init__(
         self,
