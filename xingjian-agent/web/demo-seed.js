@@ -371,6 +371,71 @@
     });
   }
 
+  /* 不刷新页面的切换：直接改内存里的 hs / data 再 render，
+     避免登录跳转、reload 时序带来的不确定性 */
+  function applyToMemory(kind) {
+    const demo = kind === 'demo';
+    if (typeof hs === 'object' && hs) {
+      hs.blocks = demo ? BLOCKS.map((item) => ({ ...item })) : [];
+      hs.tasks = demo ? TASKS.map((item) => ({ ...item })) : [];
+      hs.actual = demo ? ACTUAL.map((item) => ({ ...item })) : [];
+      hs.tags = TAGS.map((item) => ({ ...item }));
+      if (typeof hsave === 'function') {
+        try { hsave(); } catch (_error) { /* 忽略 */ }
+      }
+    }
+    if (typeof data === 'object' && data) {
+      data.goals = demo ? GOALS.map((item) => ({ ...item })) : [];
+      data.reviews = demo ? { ...(data.reviews || {}), ...REVIEWS } : {};
+      data.tasks = demo
+        ? TASKS.map((task) => ({
+            id: task.id,
+            title: task.title,
+            minutes: task.minutes,
+            goal: task.goal,
+            done: task.done,
+          }))
+        : [];
+      data.examplesV04 = true;
+      if (typeof save === 'function') {
+        try { save(); } catch (_error) { /* 忽略 */ }
+      }
+      if (window.XJ && XJ.queueSave) {
+        try { XJ.queueSave(); } catch (_error) { /* 忽略 */ }
+      }
+    }
+  }
+
+  function loadDemo() {
+    if (sessionStorage) sessionStorage.removeItem(WANT_DEMO);
+    localStorage.setItem(FLAG, '1');
+    seedDemo();
+    applyToMemory('demo');
+    if (typeof render === 'function') render();
+    if (typeof toast === 'function') toast('已载入演示场景（26 个时间块）');
+  }
+
+  function clearAll() {
+    if (sessionStorage) sessionStorage.removeItem(WANT_BLANK);
+    localStorage.setItem(FLAG, '0');
+    seedBlank();
+    applyToMemory('blank');
+    if (typeof render === 'function') render();
+    if (typeof toast === 'function') toast('已清空，从现在开始');
+  }
+
+  window.xjDemo = {
+    load: loadDemo,
+    clear: clearAll,
+    isOn: function () {
+      return localStorage.getItem(FLAG) === '1';
+    },
+    toggle: function () {
+      if (localStorage.getItem(FLAG) === '1') clearAll();
+      else loadDemo();
+    },
+  };
+
   try {
     const params = new URLSearchParams(location.search);
     // 登录流程会用 location.replace('?signed=1') 跳一次，参数会丢，
