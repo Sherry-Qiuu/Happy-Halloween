@@ -2,7 +2,9 @@
  *
  * 场景：会话校验/健康检查卡住（比如后端刚重启、file:// 打开、代理拦截），
  * 结果侧边栏在、右边一片空白。这里在启动后检查一次 #view，
- * 如果还是空的就自己调 render()，并把登录遮罩收起来。
+ * 如果还是空的就自己调 render()，并把启动遮罩收起来。
+ *
+ * 登录页（body.morrow-locked）交给 auth.js，这里不抢渲染。
  */
 (function () {
   'use strict';
@@ -12,13 +14,16 @@
     return !view || !view.innerHTML.trim();
   }
 
+  function locked() {
+    return document.body.classList.contains('morrow-locked');
+  }
+
   function unblock() {
-    document.body.classList.remove('xj-booting', 'xj-locked');
-    const auth = document.querySelector('.auth-shell, #auth, dialog[open].auth');
-    if (auth && window.__xjReady) auth.remove();
+    document.body.classList.remove('morrow-booting');
   }
 
   function rescue() {
+    if (locked()) return;
     if (!viewEmpty()) {
       unblock();
       return;
