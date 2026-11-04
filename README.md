@@ -146,20 +146,20 @@ GitHub Pages 从 `main` 自动发布同一份静态文件（`.github/workflows/p
 | 外观 | `edge-theme.js` | 浅 / 深 / 系统、5 色、10 图主题；注入 `--edge-*` token 与右下角面板 |
 | AI | `agent.js` / `agent.css` | SSE 对话、方案卡、按账号隔离聊天记录 |
 | 账号 | `auth.js` / `auth.css` | 登录 / 注册 / 找回、同步状态、账号弹窗、本地演示回退 |
-| 重排 | `planner.js` + `home-reschedule.*` | 拖拽 / 缩放、冲突检测、方案卡、自然语言协商、撤销 |
-| 语音 | `voice.js` / `voice.css` | 中文转写 |
+| 重排 | `calendar-dnd.js` + `planner.js` + `home-reschedule.*` | 拖拽 / 缩放（`calendar-dnd`）、冲突检测与方案卡（`home-reschedule`）、打分算法（`planner`）、撤销 |
+| 语音 | `agent.js` 内置 | 浏览器 `SpeechRecognition` 中文转写，音频不上传 |
 | 桥接 | `app-bridge.js`、`pages-bootstrap.js` | 账号态桥接；Pages 上自动进本地演示 |
 
 `render` 的包裹链（外层先执行）：`auth.js` → `home-reschedule.js` → `unify.js` → `workspace.js` → `refine.js` → `home.js` → 内联原型。这就是为什么在设置页改账号名、在首页拖时间块、在方案卡里点「采用」，三者互不踩踏。
 
 ### 一次拖动发生了什么
 
-1. `home-reschedule.js` 给非锁定的 `.hblock` 挂上拖拽手柄与上下缩放条。
-2. `pointermove` 把像素位移换算成小时，`Math.round((dy/height*24)*4)/4` 吸附到 15 分钟，越界 `clamp`。
-3. 松手时若无冲突：快照 `hundo` → `hsave()` → 重绘。
-4. 有冲突：`R.propose({base, draft, draggedId, persona})` 在候选组合（`cartesian(…,24)`）里打分排序。
-5. 方案卡只渲染在 `.hai-scroll`（首页的 AI 条），带账单、逐条改动、备选按钮。
-6. 点「应用方案」才写回 `hs.blocks`；「撤销上次修改」用 `hundo` 整体回滚。
+1. `calendar-dnd.js` 接管 `.hblock` 的 pointerdown：块中间拖动、上下边缘改时长、左右拖到别的日期列。
+2. `pointermove` 按 `xjCalGeom()` 的像素/小时换算，吸附到 5 分钟，并夹在当前可见时间区间内。
+3. 松手时若无冲突：`hsave()` → 重绘 → toast 新的起止时间。
+4. 有冲突：落点先留着，交给 `MorrowReschedule.offer()`；`R.propose({base, draft, draggedId, persona})` 在候选组合（`cartesian(…,24)`）里打分排序。
+5. 方案卡只渲染在 `.hai-scroll`（首页的 AI 条），带账单、逐条改动、备选按钮和画像选择。
+6. 点「应用方案」才写回 `hs.blocks`；「保留原样」回到拖动前的位置；「撤销上次修改」用 `hundo` 整体回滚。
 
 对话里的「别动客户会」「缩短到 45 分钟」「换到明天下午」由 `parseConstraints()` 变成 `avoid / shorten / force / dayOffset / part` 再重算一次，不调模型。
 
