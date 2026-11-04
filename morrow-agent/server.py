@@ -52,6 +52,7 @@ import deepseek
 import mock_agent
 import policy
 import sched_profile
+import snapshots
 import backend_services
 import conversation_memory
 import harness
@@ -760,9 +761,21 @@ class AgentHandler(BaseHTTPRequestHandler):
         updated_at = self.server.accounts.save_data(
             user["id"], payload["data"]
         )
+        self._archive_state(user["id"], payload["data"])
         self._send_json(
             HTTPStatus.OK, {"updated_at": updated_at}
         )
+
+    def _archive_state(self, user_id: str, state: Any) -> None:
+        """L0: keep the version being overwritten (see snapshots.py)."""
+        settings = self.server.settings
+        if not settings.snapshot_enabled or settings.snapshot_dir is None:
+            return
+        try:
+            snapshots.append(settings.snapshot_dir, user_id, state)
+        except (OSError, ValueError):
+            # Archiving must never break the save the user asked for.
+            traceback.print_exc()
 
     def _handle_update_account(self) -> None:
         user = self._current_user()
@@ -807,6 +820,12 @@ class AgentHandler(BaseHTTPRequestHandler):
             payload.get("password"),
             ip=self._client_ip(),
         )
+        settings = self.server.settings
+        if settings.snapshot_dir is not None:
+            try:
+                snapshots.remove_user(settings.snapshot_dir, user["id"])
+            except (OSError, ValueError):
+                traceback.print_exc()
         self._send_json(
             HTTPStatus.OK,
             {"ok": True},
@@ -1690,6 +1709,17 @@ def main(argv: list[str] | None = None) -> int:
     elif not settings.api_key:
         print("[agent] 未配置 DEEPSEEK_API_KEY，AI 面板会提示离线")
     print(f"[agent] 数据目录：{settings.data_dir}")
+    if settings.snapshot_enabled and settings.snapshot_dir is not None:
+        try:
+            pruned = snapshots.prune(
+                settings.snapshot_dir, retention_days=settings.snapshot_days
+            )
+        except OSError:
+            pruned = 0
+        print(
+            f"[agent] 快照归档：{settings.snapshot_dir}"
+            f"（保留 {settings.snapshot_days} 天，启动清理 {pruned} 个文件）"
+        )
     print(
         "[agent] 注册："
         + ("开放" if settings.allow_registration else "关闭")

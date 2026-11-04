@@ -104,6 +104,11 @@ class Settings:
     # Development-only bypass for local demos; never enable in production.
     dev_bypass_auth: bool = False
 
+    # L0 collection: keep a compressed copy of every saved state.
+    snapshot_enabled: bool = True
+    snapshot_dir: Path | None = None  # defaults to <data_dir>/snapshots
+    snapshot_days: int = 90  # retention, pruned on start
+
     # Email verification (registration and password reset). The SMTP
     # password is a QQ Mail "授权码", never the mailbox login password.
     mail_transport: str = "smtp"
@@ -188,6 +193,12 @@ def load_settings(env_file: Path | None = None) -> Settings:
     mail_port = _as_int("SMTP_PORT", 465)
     if not 1 <= mail_port <= 65535:
         mail_port = 465
+    data_dir = Path(
+        os.environ.get(
+            "MORROW_DATA_DIR",
+            str(ROOT.parent / "server information"),
+        )
+    ).resolve()
     return Settings(
         api_key=os.environ.get("DEEPSEEK_API_KEY", "").strip(),
         base_url=os.environ.get(
@@ -206,12 +217,12 @@ def load_settings(env_file: Path | None = None) -> Settings:
         web_dir=Path(
             os.environ.get("AGENT_WEB_DIR", str(ROOT / "web"))
         ).resolve(),
-        data_dir=Path(
-            os.environ.get(
-                "MORROW_DATA_DIR",
-                str(ROOT.parent / "server information"),
-            )
+        data_dir=data_dir,
+        snapshot_enabled=_as_bool("MORROW_SNAPSHOT", True),
+        snapshot_dir=Path(
+            os.environ.get("MORROW_SNAPSHOT_DIR", str(data_dir / "snapshots"))
         ).resolve(),
+        snapshot_days=_as_int("MORROW_SNAPSHOT_DAYS", 90),
         session_days=_as_int("MORROW_SESSION_DAYS", 7),
         cookie_secure=_as_bool("COOKIE_SECURE"),
         allow_registration=_as_bool("MORROW_ALLOW_REGISTRATION", True),
