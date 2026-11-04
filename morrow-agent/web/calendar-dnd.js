@@ -82,6 +82,7 @@
       startY: event.clientY,
       startX: event.clientX,
       origin: { start: block.start, end: block.end, date: block.date },
+      baseState: typeof structuredClone === 'function' ? structuredClone(store()) : null,
       geom,
       moved: false,
     };
@@ -139,7 +140,7 @@
 
   function onPointerUp() {
     if (!drag) return;
-    const { block, node, origin, moved } = drag;
+    const { block, node, origin, moved, baseState } = drag;
     node.classList.remove('dragging');
     drag = null;
 
@@ -151,6 +152,15 @@
     const rows = list();
     const hit = rows.some((row) => conflicts(block, row));
     if (hit) {
+      const reschedule = window.MorrowReschedule;
+      if (reschedule && typeof reschedule.offer === 'function') {
+        // 落点先留着，交给重排面板给方案；应用或保留由面板决定
+        window.__xjSuppressClick = true;
+        setTimeout(() => { window.__xjSuppressClick = false; }, 250);
+        if (typeof render === 'function') render();
+        reschedule.offer({ id: block.id, from: origin, baseState });
+        return;
+      }
       block.start = origin.start;
       block.end = origin.end;
       block.date = origin.date;
@@ -161,6 +171,7 @@
 
     if (typeof hsave === 'function') hsave();
     window.__xjSuppressClick = true;
+    setTimeout(() => { window.__xjSuppressClick = false; }, 250);
     if (typeof render === 'function') render();
     if (typeof toast === 'function') {
       toast(`${block.title} → ${minutesLabel(block.start)}–${minutesLabel(block.end)}`);
