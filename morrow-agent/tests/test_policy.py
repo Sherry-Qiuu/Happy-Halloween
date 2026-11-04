@@ -141,5 +141,50 @@ class ChunkTest(unittest.TestCase):
         self.assertEqual("".join(policy.chunks(text, 3)), text)
 
 
+class RegisterTest(unittest.TestCase):
+    """A hard ceiling on slang, and a floor against corporate speak."""
+
+    def test_slang_is_removed(self):
+        text, violations = policy.apply("绝绝子，今天效率真高。")
+        self.assertNotIn("绝绝子", text)
+        self.assertIn("今天效率真高", text)
+        self.assertEqual(violations[0]["rule"], "too_colloquial")
+
+    def test_particles_are_thinned_per_clause(self):
+        text, violations = policy.apply("行吧，那你先做着，我这边随时接着聊啊哈呢。")
+        self.assertLessEqual(sum(text.count(p) for p in ("啊", "哈", "呢")), 1)
+        self.assertIn("particles", [v.get("detail") for v in violations])
+
+    def test_dense_particles_are_stripped(self):
+        text, violations = policy.apply(
+            "嗯嗯，好呀，我先试试看吧，有问题再喊你哈。"
+        )
+        self.assertEqual(policy.particle_ratio(text), 0)
+        self.assertIn("density", [v.get("detail") for v in violations])
+
+    def test_short_friendly_reply_is_left_alone(self):
+        text, violations = policy.apply("好呀，那就这么定了吧。")
+        self.assertIn("呀", text)
+        self.assertEqual(violations, [])
+
+    def test_jargon_is_plainened(self):
+        text, violations = policy.apply("我们先对齐一下颗粒度，再看整体链路。")
+        self.assertNotIn("颗粒度", text)
+        self.assertNotIn("对齐", text)
+        self.assertIn("细到什么程度", text)
+        self.assertEqual(violations[0]["rule"], "jargon")
+
+    def test_repeated_punctuation_collapses(self):
+        text, violations = policy.apply("真的要这样吗？？？")
+        self.assertEqual(text.count("？"), 1)
+        self.assertIn("repeat_punct", [v["rule"] for v in violations])
+
+    def test_plain_reply_survives_untouched(self):
+        raw = "这块还没开始，明早 20 分钟空档先做开头？"
+        text, violations = policy.apply(raw)
+        self.assertEqual(text, raw)
+        self.assertEqual(violations, [])
+
+
 if __name__ == "__main__":
     unittest.main()

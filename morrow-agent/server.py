@@ -880,6 +880,7 @@ class AgentHandler(BaseHTTPRequestHandler):
         clarify_raw: dict[str, Any] | None = None
         parts: list[str] = []
         user_text = history[-1]["content"] if history else ""
+        profile = self._learn_style(user["id"], profile, user_text)
         if discuss_mode:
             messages_discuss = (
                 "<discuss>本轮是讨论轮：用户说的还不足以直接排程。"
@@ -1166,6 +1167,29 @@ class AgentHandler(BaseHTTPRequestHandler):
             self.server.accounts.save_profile(user_id, updated)
         except (AccountError, StorageError):
             traceback.print_exc()
+        return updated
+
+    def _learn_style(
+        self, user_id: str, profile: dict[str, Any], text: str
+    ) -> dict[str, Any]:
+        """Learn how this user writes — from the user's side only.
+
+        Style is statistics, not a model write, so it takes effect in the
+        same turn. A no-op turn must not touch the file: the equality check
+        keeps the write count at "only when a counter moved".
+        """
+        try:
+            updated = sched_profile.observe_style(profile, text)
+        except (sched_profile.ProfileError, ValueError):
+            traceback.print_exc()
+            return profile
+        if not isinstance(updated, dict) or updated == profile:
+            return profile
+        try:
+            self.server.accounts.save_profile(user_id, updated)
+        except (AccountError, StorageError):
+            traceback.print_exc()
+            return profile
         return updated
 
     def _handle_observe(self) -> None:

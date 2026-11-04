@@ -98,8 +98,64 @@ BANNED: tuple[tuple[str, str], ...] = (
 _SENTENCE_SPLIT = re.compile(r"[。！？!?；;\n]+")
 _CLAUSE_SPLIT = re.compile(r"[，,、]")
 _HAS_DIGIT = re.compile(r"\d")
+_REPEAT_PUNCT = re.compile(r"([？?!！。~～])\1+")
 
 _EMOJI_RANGES = ((0x1F300, 0x1FAFF), (0x2600, 0x27BF), (0x1F000, 0x1F0FF))
+
+# --------------------------------------------------------------------------
+# 口语上限（硬约束）：可以跟着用户的口吻走，但不许滑成网感或黑话。
+# --------------------------------------------------------------------------
+
+MAX_PARTICLE_RATIO = 0.12  # 语气词占正文比例上限（够长才算数）
+MAX_PARTICLES_PER_CLAUSE = 1
+PARTICLE_FLOOR = 4  # 短句里的两三个语气词不算"过分口语"
+
+PARTICLES = ("啊", "吧", "嘛", "呢", "呀", "啦", "哦", "呗", "嗯", "哈")
+
+# 网络用语与粗俗表达：直接删，不做替换（替换容易留下更怪的句子）
+COLLOQUIAL_SLANG = (
+    "绝绝子",
+    "yyds",
+    "YYDS",
+    "破防",
+    "栓Q",
+    "狠狠",
+    "麻了",
+    "绷不住",
+    "蚌埠住了",
+    "awsl",
+    "xswl",
+    "逆天",
+    "离谱",
+    "牛逼",
+    "牛批",
+    "卧槽",
+    "特么",
+    "妈的",
+    "搞毛",
+    "笑死",
+    "233",
+    "emo了",
+)
+
+# 职场黑话：换成平实说法（用户没这么说话，AI 就不该这么说话）
+JARGON = {
+    "赋能": "帮",
+    "闭环": "完整流程",
+    "抓手": "切入点",
+    "颗粒度": "细到什么程度",
+    "对齐": "确认",
+    "沉淀": "留下来",
+    "链路": "环节",
+    "心智": "想法",
+    "打法": "做法",
+    "底层逻辑": "原因",
+    "顶层设计": "整体安排",
+    "势能": "动力",
+}
+
+# 公文体：整句删掉比换成半截话更安全
+FORMAL_STALE = ("综上所述", "特此", "予以", "请知悉", "悉知", "兹")
 
 
 def _strip_emoji(text: str) -> tuple[str, int]:
@@ -119,6 +175,72 @@ def _strip_emoji(text: str) -> tuple[str, int]:
 
 def _carries_fact(sentence: str) -> bool:
     return bool(_HAS_DIGIT.search(sentence)) or "分钟" in sentence
+
+
+def _temper(piece: str) -> tuple[str, list[dict[str, Any]]]:
+    """Trim a clause to the allowed register: not slang, not corporate.
+
+    Returns the clause plus what was removed, so the log shows why a reply
+    differs from what the model wrote.
+    """
+    out = piece
+    violations: list[dict[str, Any]] = []
+
+    for word in COLLOQUIAL_SLANG:
+        if word in out:
+            out = out.replace(word, "")
+            violations.append({"rule": "too_colloquial", "word": word})
+
+    for word, plain in JARGON.items():
+        if word in out:
+            out = out.replace(word, plain)
+            violations.append({"rule": "jargon", "word": word})
+
+    for word in FORMAL_STALE:
+        if word in out:
+            out = out.replace(word, "")
+            violations.append({"rule": "stale_formal", "word": word})
+
+    before = out
+    out = _REPEAT_PUNCT.sub(lambda match: match.group(1), out)
+    if out != before:
+        violations.append({"rule": "repeat_punct"})
+
+    # At most one particle per clause: "好呀好呀呀" is a mood, not a sentence.
+    seen = 0
+    thinned: list[str] = []
+    for char in out:
+        if char in PARTICLES:
+            seen += 1
+            if seen > MAX_PARTICLES_PER_CLAUSE:
+                continue
+        thinned.append(char)
+    if thinned != list(out):
+        out = "".join(thinned)
+        violations.append({"rule": "too_colloquial", "detail": "particles"})
+
+    return out.strip(" ，、~"), violations
+
+
+def particle_ratio(text: str) -> float:
+    """Share of particles in the reply, used as the hard colloquial ceiling."""
+    if not text:
+        return 0.0
+    count = sum(1 for char in text if char in PARTICLES)
+    return count / len(text)
+
+
+def _strip_particles(text: str) -> str:
+    return "".join(char for char in text if char not in PARTICLES)
+
+
+def _tidy(text: str) -> str:
+    """Remove the punctuation debris that filtering leaves behind."""
+    text = re.sub(r"[，、]\s*[。]", "。", text)
+    text = re.sub(r"([，、])\1+", r"\1", text)
+    text = re.sub(r"(^|[。\n])\s*[，、]+", r"\1", text)
+    text = re.sub(r"[，、]+\s*$", "", text)
+    return text.strip()
 
 
 def _split(text: str) -> list[str]:
@@ -158,6 +280,11 @@ def apply(
         violations.append({"rule": "exclamation"})
         cleaned = cleaned.replace("！", "。").replace("!", "。")
 
+    deduped = _REPEAT_PUNCT.sub(lambda match: match.group(1), cleaned)
+    if deduped != cleaned:
+        violations.append({"rule": "repeat_punct"})
+        cleaned = deduped
+
     # Work paragraph by paragraph so the reflection report keeps its shape;
     # work clause by clause so "你又超时了，实际 52 分钟" loses the judgement
     # and keeps the number instead of trading one for the other.
@@ -172,18 +299,20 @@ def apply(
                 hit = next(
                     (rule for needle, rule in BANNED if needle in piece), None
                 )
-                if hit is None:
-                    clauses.append(piece)
-                elif _carries_fact(piece):
+                if hit is not None and not _carries_fact(piece):
+                    violations.append(
+                        {"rule": hit, "clause": piece, "kept": False}
+                    )
+                    continue
+                if hit is not None:
                     # A fact outranks a tone rule: keep it, record the smell.
                     violations.append(
                         {"rule": hit, "clause": piece, "kept": "carries_fact"}
                     )
+                piece, tone = _temper(piece)
+                violations.extend(tone)
+                if piece:
                     clauses.append(piece)
-                else:
-                    violations.append(
-                        {"rule": hit, "clause": piece, "kept": False}
-                    )
             if clauses:
                 kept.append((index, "，".join(clauses)))
 
@@ -203,6 +332,13 @@ def apply(
             rendered[-1] += "。" + sentence
 
     body = "\n\n".join(rendered)
+    # Hard ceiling: mirroring the user's wording stops short of sounding
+    # like a feed comment. Short replies are judged per clause only.
+    particles = sum(1 for char in body if char in PARTICLES)
+    if particles >= PARTICLE_FLOOR and particle_ratio(body) > MAX_PARTICLE_RATIO:
+        body = _strip_particles(body)
+        violations.append({"rule": "too_colloquial", "detail": "density"})
+    body = _tidy(body)
     if body and not body.endswith(("？", "。", "…")):
         body += "。"
     # A question keeps its mark: splitting on punctuation would otherwise
