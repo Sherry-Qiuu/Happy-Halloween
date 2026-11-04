@@ -17,6 +17,8 @@
   'use strict';
 
   const FLAG = 'morrow-demo-seeded-v2';
+  const WANT_DEMO = 'morrow-want-demo';
+  const WANT_BLANK = 'morrow-want-blank';
   const HOME_KEY = 'morrow-home-v05';
 
   const T = (offset) => window.xjShift(window.XJ_TODAY, offset);
@@ -242,49 +244,45 @@
     });
   }
 
-  function looksLikeStock(home) {
-    const blocks = blocksOf(home);
-    if (!blocks.length) return true; // 空日历也算“没动过”
-    if (blocks.length > 4) return false;
-    return blocks.every((block) => STOCK_TITLES.has(String(block.title || '')));
+  function dataKeyName() {
+    return window.XJ && XJ.dataKey ? XJ.dataKey() : 'morrow-v02';
   }
 
-  function shouldSeed() {
-    if (new URLSearchParams(location.search).get('demo') === '1') return true;
-    let current = null;
-    try {
-      current = JSON.parse(localStorage.getItem(HOME_KEY) || 'null');
-    } catch (_error) {
-      current = null;
-    }
-    // 已经是演示数据：日期还新鲜就不重复种；演示块全过期了就按今天重排一次
-    if (looksLikeDemo(current)) {
-      const dates = blocksOf(current).map((block) => String(block.date || '')).filter(Boolean).sort();
-      const newest = dates[dates.length - 1] || '';
-      return newest < window.XJ_TODAY;
-    }
-    // 还是原型默认那几块（或空）：补成完整演示场景
-    if (looksLikeStock(current)) return true;
-    // 有自己排的内容：尊重用户，不动
-    return false;
+  /* 空白起点：新账号、或用户主动 ?blank=1 时使用 */
+  function seedBlank() {
+    localStorage.setItem(
+      HOME_KEY,
+      JSON.stringify({ blocks: [], tasks: [], actual: [], tags: TAGS })
+    );
+    localStorage.setItem(
+      dataKeyName(),
+      JSON.stringify({
+        goals: [],
+        reviews: {},
+        tasks: [],
+        extra: [],
+        name: '',
+        reminder: false,
+        moved: true,
+      })
+    );
+    localStorage.setItem(FLAG, '0');
   }
 
-  function seed() {
+  function seedDemo() {
     localStorage.setItem(
       HOME_KEY,
       JSON.stringify({ blocks: BLOCKS, tasks: TASKS, actual: ACTUAL, tags: TAGS })
     );
-
-    const dataKey = window.Morrow && Morrow.dataKey ? XJ.dataKey() : 'morrow-v02';
     let existing = null;
     try {
-      existing = JSON.parse(localStorage.getItem(dataKey) || 'null');
+      existing = JSON.parse(localStorage.getItem(dataKeyName()) || 'null');
     } catch (_error) {
       existing = null;
     }
     const base = existing && typeof existing === 'object' ? existing : {};
     localStorage.setItem(
-      dataKey,
+      dataKeyName(),
       JSON.stringify({
         ...base,
         goals: GOALS,
@@ -305,14 +303,189 @@
     localStorage.setItem(FLAG, '1');
   }
 
-  try {
-    if (!shouldSeed()) return;
-    seed();
+  function reloadOnce() {
     const marker = 'morrow-demo-reloading';
-    if (!sessionStorage.getItem(marker)) {
-      sessionStorage.setItem(marker, '1');
-      location.reload();
+    if (sessionStorage.getItem(marker)) return false;
+    sessionStorage.setItem(marker, '1');
+    location.reload();
+    return true;
+  }
+
+  /* 等登录流程跑完（auth.js 会先把服务端数据写回本地，
+     如果我们在那之前写入演示数据，会被服务端的空数据覆盖） */
+  function whenReady(callback) {
+    if (window.__xjReady) {
+      callback();
+      return;
     }
+    let tries = 0;
+    const timer = setInterval(function () {
+      tries += 1;
+      if (window.__xjReady) {
+        clearInterval(timer);
+        callback();
+      } else if (tries > 400) {
+        // 40 秒还没就绪（冷启动/网络慢）：照常写入本地，别再干等
+        clearInterval(timer);
+        callback();
+      }
+    }, 100);
+  }
+
+  function pushToServer() {
+    const user = window.XJ && XJ.getUser ? XJ.getUser() : null;
+    if (!user) return Promise.resolve();
+    const key = window.XJ && XJ.dataKey ? XJ.dataKey() : 'morrow-v02';
+    let snapshot = null;
+    try {
+      snapshot = JSON.parse(localStorage.getItem(key) || 'null');
+    } catch (_error) {
+      snapshot = null;
+    }
+    if (!snapshot) return Promise.resolve();
+    return fetch('/api/data', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'same-origin',
+      body: JSON.stringify({ data: snapshot }),
+    }).catch(function () {
+      /* 离线场景忽略：本地已经写好，下次保存会补上 */
+    });
+  }
+
+  /* 显式切换模式：等登录就绪 → 写数据 → 推给服务端 → 去掉 URL 参数 → 刷新 */
+  function switchMode(write) {
+    sessionStorage.removeItem(WANT_DEMO);
+    sessionStorage.removeItem(WANT_BLANK);
+    whenReady(function () {
+      write();
+      Promise.resolve(pushToServer()).then(function () {
+        try {
+          history.replaceState(null, '', location.pathname);
+        } catch (_error) {
+          /* file:// 下 replaceState 可能不可用，忽略 */
+        }
+        sessionStorage.removeItem('morrow-demo-reloading');
+        location.reload();
+      });
+    });
+  }
+
+  /* 不刷新页面的切换：直接改内存里的 hs / data 再 render，
+     避免登录跳转、reload 时序带来的不确定性 */
+  function applyToMemory(kind) {
+    const demo = kind === 'demo';
+    if (typeof hs === 'object' && hs) {
+      hs.blocks = demo ? BLOCKS.map((item) => ({ ...item })) : [];
+      hs.tasks = demo ? TASKS.map((item) => ({ ...item })) : [];
+      hs.actual = demo ? ACTUAL.map((item) => ({ ...item })) : [];
+      hs.tags = TAGS.map((item) => ({ ...item }));
+      if (typeof hsave === 'function') {
+        try { hsave(); } catch (_error) { /* 忽略 */ }
+      }
+    }
+    if (typeof data === 'object' && data) {
+      data.goals = demo ? GOALS.map((item) => ({ ...item })) : [];
+      data.reviews = demo ? { ...(data.reviews || {}), ...REVIEWS } : {};
+      data.tasks = demo
+        ? TASKS.map((task) => ({
+            id: task.id,
+            title: task.title,
+            minutes: task.minutes,
+            goal: task.goal,
+            done: task.done,
+          }))
+        : [];
+      data.examplesV04 = true;
+      if (typeof save === 'function') {
+        try { save(); } catch (_error) { /* 忽略 */ }
+      }
+      if (window.XJ && XJ.queueSave) {
+        try { XJ.queueSave(); } catch (_error) { /* 忽略 */ }
+      }
+    }
+  }
+
+  function loadDemo() {
+    if (sessionStorage) sessionStorage.removeItem(WANT_DEMO);
+    localStorage.setItem(FLAG, '1');
+    seedDemo();
+    applyToMemory('demo');
+    if (typeof render === 'function') render();
+    if (typeof toast === 'function') toast('已载入演示场景（26 个时间块）');
+  }
+
+  function clearAll() {
+    if (sessionStorage) sessionStorage.removeItem(WANT_BLANK);
+    localStorage.setItem(FLAG, '0');
+    seedBlank();
+    applyToMemory('blank');
+    if (typeof render === 'function') render();
+    if (typeof toast === 'function') toast('已清空，从现在开始');
+  }
+
+  window.xjDemo = {
+    load: loadDemo,
+    clear: clearAll,
+    isOn: function () {
+      return localStorage.getItem(FLAG) === '1';
+    },
+    toggle: function () {
+      if (localStorage.getItem(FLAG) === '1') clearAll();
+      else loadDemo();
+    },
+  };
+
+  try {
+    const params = new URLSearchParams(location.search);
+    // 登录流程会用 location.replace('?signed=1') 跳一次，参数会丢，
+    // 所以显式请求先记到 sessionStorage，跳转后还能接着办。
+    if (params.get('demo') === '1') sessionStorage.setItem(WANT_DEMO, '1');
+    if (params.get('blank') === '1') sessionStorage.setItem(WANT_BLANK, '1');
+    const wantsDemo = sessionStorage.getItem(WANT_DEMO) === '1';
+    const wantsBlank = sessionStorage.getItem(WANT_BLANK) === '1';
+    const demoKnown = localStorage.getItem(FLAG) === '1';
+    const hasHome = localStorage.getItem(HOME_KEY) !== null;
+
+    let current = null;
+    try {
+      current = JSON.parse(localStorage.getItem(HOME_KEY) || 'null');
+    } catch (_error) {
+      current = null;
+    }
+
+    // 1) 主动要求演示场景：种一份完整数据
+    if (wantsDemo) {
+      switchMode(seedDemo);
+      return;
+    }
+
+    // 2) 主动要求清空：回到真正的 0
+    if (wantsBlank) {
+      switchMode(seedBlank);
+      return;
+    }
+
+    // 3) 全新浏览器（没有本地数据）：立刻写一份空白，从 0 开始
+    //    这里不等登录：时间块（hs）不参与服务端同步，先写不会被打回去；
+    //    等登录反而会超时，最后落回原型自带的示例数据。
+    if (!hasHome) {
+      seedBlank();
+      reloadOnce();
+      return;
+    }
+
+    // 4) 之前用 ?demo=1 打开过：保持演示模式，只在日期过期时按今天重排
+    if (demoKnown && looksLikeDemo(current)) {
+      const dates = blocksOf(current).map((block) => String(block.date || '')).filter(Boolean).sort();
+      const newest = dates[dates.length - 1] || '';
+      if (newest < window.XJ_TODAY) {
+        seedDemo();
+        reloadOnce();
+      }
+    }
+
+    // 5) 其它情况（用户自己排过内容）：什么都不做，尊重用户数据
   } catch (error) {
     console.warn('[demo] seed failed', error);
   }

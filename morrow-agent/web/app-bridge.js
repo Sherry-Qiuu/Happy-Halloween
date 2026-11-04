@@ -1,7 +1,7 @@
 /* app-bridge.js — 把 V0.13 前端接回账号与 AI 后端。
  *
  *  1. 账号同步：前端自己的状态键（首页块、记忆库、侧栏偏好…）打包进账号文档
- *     的 __app 字段，随 Morrow.queueSave() 一起上传；登录后若服务端有更新的副本，
+ *     的 __app 字段，随 XJ.queueSave() 一起上传；登录后若服务端有更新的副本，
  *     写回 localStorage 并重载一次。
  *  2. 首页 AI：账号已登录且后端 agent 可用时，把「说说你的想法」接到
  *     /api/agent/chat（SSE 流式）；不可用时回落到原型自带的本地草案流程。
@@ -19,11 +19,11 @@
     'morrow-history-',
     'morrow-nav-',
   ];
-  const RESTORE_FLAG = 'morrow-app-restored';
+  const RESTORE_FLAG = 'xj-app-restored';
 
   const isAppKey = (key) => APP_PREFIXES.some((p) => String(key).indexOf(p) === 0);
   const currentUser = () =>
-    window.Morrow && typeof window.Morrow.getUser === 'function' ? window.Morrow.getUser() : null;
+    window.XJ && typeof window.XJ.getUser === 'function' ? window.XJ.getUser() : null;
   const agent = () => window.__morrowAgent || null;
   const appData = () => (typeof data === 'object' && data ? data : null);
 
@@ -56,7 +56,7 @@
     doc.__app = collectKeys();
     if (pushTimer) clearTimeout(pushTimer);
     pushTimer = setTimeout(() => {
-      if (window.Morrow && typeof window.Morrow.queueSave === 'function') window.Morrow.queueSave();
+      if (window.XJ && typeof window.XJ.queueSave === 'function') window.XJ.queueSave();
     }, 600);
   }
 
@@ -239,7 +239,8 @@
     }
   }
 
-  /* 只在账号已登录且后端报告 AI 可用时接管；否则保持原来的本地草案。 */
+  /* 统一走 agent.js 的对话管线：完整 state（含时间块/日期）、
+     建议卡、采用/撤销、以及服务端长期记忆与历史会话。 */
   const localInput = window.aiHomeInput;
   if (typeof localInput === 'function') {
     window.__localHomeInput = localInput;
@@ -248,6 +249,9 @@
       if (!value) return undefined;
       const field = document.querySelector('#homeComposer input');
       if (field) field.value = '';
+      if (window.__morrowAgent && typeof window.send === 'function') {
+        return window.send(value);
+      }
       const ready = agent() && agent().configured && currentUser();
       if (!ready || streaming) return localInput.apply(this, arguments);
       return chat(value);
@@ -276,7 +280,7 @@
       menu.classList.add('hidden');
       const toggle = document.getElementById('workspaceAccount');
       if (toggle) toggle.setAttribute('aria-expanded', 'false');
-      if (window.Morrow && typeof window.Morrow.openAccount === 'function') window.Morrow.openAccount();
+      if (window.XJ && typeof window.XJ.openAccount === 'function') window.XJ.openAccount();
     });
     menu.appendChild(item);
   }

@@ -29,9 +29,6 @@ Agent
     GET  /api/agent/health     connection state for the UI
     POST /api/agent/chat       streaming reply (server-sent events)
     POST /api/agent/report     reflection observation, JSON
-    POST /api/agent/decompose  split a goal into ordered steps, JSON
-    POST /api/agent/replan     propose a plan for a disrupted day, JSON
-    POST /api/agent/reflection rule-based reflection facts, JSON
 
 Operations
     GET  /api/health           liveness probe for Docker / systemd
@@ -51,11 +48,14 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
 from urllib.parse import unquote, urlsplit
 
-import backend_services
 import deepseek
 import mock_agent
 import policy
 import sched_profile
+import backend_services
+import conversation_memory
+import harness
+import portrait
 from accounts import (
     MAX_DATA_BYTES,
     SESSION_COOKIE,
@@ -69,7 +69,7 @@ from accounts import (
 )
 from config import Settings, load_settings
 from mailer import MailError, Mailer
-from prompts import chat_messages, report_messages
+from prompts import chat_messages, observe_messages, report_messages
 from protocol import sse
 from verification import CodeError, VerificationStore
 
@@ -144,6 +144,10 @@ class AgentServer(ThreadingHTTPServer):
 
     daemon_threads = True
     allow_reuse_address = True
+    # 浏览器一次会并发拉几十个静态文件；反向代理/隧道也会复用大量连接。
+    # socketserver 默认 backlog 只有 5，容易被瞬间打满后表现为「连接被拒绝」
+    # （对外看就是 Cloudflare 530）。这里放大到 256。
+    request_queue_size = 256
 
     def __init__(
         self,
@@ -197,6 +201,12 @@ class AgentHandler(BaseHTTPRequestHandler):
         if path in ("/api/agent/health", "/api/agent/config"):
             self._send_health()
             return
+        if path == "/api/agent/history":
+            self._handle_history()
+            return
+        if path == "/api/agent/profile":
+            self._handle_profile()
+            return
         if path.startswith("/api/"):
             self._send_json(
                 HTTPStatus.NOT_FOUND,
@@ -221,6 +231,12 @@ class AgentHandler(BaseHTTPRequestHandler):
             return
         if path == "/api/agent/reflection":
             self._handle_structured(backend_services.reflection)
+            return
+        if path == "/api/agent/feedback":
+            self._handle_feedback()
+            return
+        if path == "/api/agent/observe":
+            self._handle_observe()
             return
         routes = {
             "/api/auth/register": self._handle_register,
@@ -490,6 +506,7 @@ class AgentHandler(BaseHTTPRequestHandler):
                 "registration": settings.allow_registration,
                 "email": settings.mail_configured,
                 "email_required": settings.email_required,
+                "dev_bypass_auth": settings.dev_bypass_auth,
             },
         )
 
@@ -797,6 +814,10 @@ class AgentHandler(BaseHTTPRequestHandler):
         )
 
     def _agent_user(self) -> dict[str, Any] | None:
+        if self.server.settings.dev_bypass_auth:
+            # 本地演示没有真实账号，但仍要一个合法 id，
+            # 这样画像和长期记忆才能落到数据目录里。
+            return {"id": "u_0000000000000000", "username": "dev", "display_name": "本地开发"}
         user = self.server.accounts.resolve_session(self._session_token())
         if user is None:
             self._send_json(
@@ -836,31 +857,106 @@ class AgentHandler(BaseHTTPRequestHandler):
 
         goals_count = _goals_count(state)
         profile = self._load_profile(user["id"])
+        profile = self._refresh_portrait(user["id"], profile, state)
+        memory = self._load_memory(user["id"])
+        pending_questions = bool(
+            isinstance(memory.get("pending"), dict)
+            and memory["pending"].get("questions")
+        )
+        discuss_rounds = int(memory.get("clarify_rounds") or 0)
+        first_text = history[0]["content"] if history else ""
+        tool_context = {
+            "scheduling_params": sched_profile.scheduling_params(profile)
+        }
+        discuss_mode = _needs_discussion(
+            first_text,
+            rounds_done=discuss_rounds,
+            has_pending=pending_questions,
+        )
         turn = int(profile.get("turn", 0)) + 1
         persona_raw: dict[str, Any] | None = None
         draft_raw: dict[str, Any] | None = None
         proposal: dict[str, Any] | None = None
+        clarify_raw: dict[str, Any] | None = None
         parts: list[str] = []
         user_text = history[-1]["content"] if history else ""
+        if discuss_mode:
+            messages_discuss = (
+                "<discuss>本轮是讨论轮：用户说的还不足以直接排程。"
+                "只能输出 clarify 块（最多 3 个问题，每题 2–4 个候选答案），"
+                "不要输出 changes，也不要假装已经排好。提问要能直接改变拆解结果。</discuss>"
+            )
+        elif pending_questions or discuss_rounds >= 2:
+            messages_discuss = (
+                "<act>用户已经回答了你上一轮的问题，或讨论轮次已用完。"
+                "本轮必须输出改动块（changes 非空），不要再提同样的问题；"
+                "仍有不确定的地方用最合理的假设并在正文注明估算。</act>"
+            )
+        else:
+            messages_discuss = ""
         messages = chat_messages(
-            history, state, sched_profile.prompt_block(profile, turn)
+            history,
+            state,
+            sched_profile.prompt_block(profile, turn),
+            conversation_memory.digest(memory),
+            portrait.prompt_block(profile.get("derived")),
+            messages_discuss,
         )
         self._start_stream()
 
-        producer = mock_agent if settings.mock else deepseek
+        prefetched = None
+        if not settings.mock:
+            try:
+                prefetched = harness.fallback_plan(state, user_text, tool_context)
+            except Exception:  # noqa: BLE001
+                prefetched = None
+            hint = "正在核对日程与空档…" if prefetched else "正在理解你的需求…"
+            self._write_event("status", {"text": hint})
+
         try:
-            for kind, value in producer.iter_reply(
-                settings, messages, goals_count, context=context
-            ):
-                if kind == "delta":
-                    parts.append(value)
-                elif kind == "proposal":
-                    proposal = value if isinstance(value, dict) else None
-                elif kind == "persona":
-                    # Server-side only: never forwarded to the browser.
-                    persona_raw = value if isinstance(value, dict) else None
-                elif kind == "draft":
-                    draft_raw = value if isinstance(value, dict) else None
+            if settings.mock:
+                for kind, value in mock_agent.iter_reply(
+                    settings, messages, goals_count, context=context
+                ):
+                    if kind == "delta":
+                        parts.append(value)
+                    elif kind == "proposal":
+                        proposal = value if isinstance(value, dict) else None
+                    elif kind == "persona":
+                        persona_raw = value if isinstance(value, dict) else None
+                    elif kind == "draft":
+                        draft_raw = value if isinstance(value, dict) else None
+                    elif kind == "clarify":
+                        clarify_raw = value if isinstance(value, dict) else None
+            else:
+                result = harness.run_turn(
+                    settings,
+                    messages,
+                    state,
+                    goals_count,
+                    write_event=self._write_event,
+                    log=lambda line: sys.stdout.write(line + "\n"),
+                    context=tool_context,
+                    prefetched=prefetched,
+                )
+                parts.append(result["text"])
+                proposal = result["proposal"]
+                clarify_raw = result["clarify"]
+                persona_raw = result["persona"]
+                draft_raw = result["draft"]
+                if result["tools"]:
+                    sys.stdout.write(
+                        "[tool] used " + ",".join(result["tools"]) + "\n"
+                    )
+                    sys.stdout.flush()
+                sys.stdout.write(
+                    "[turn] model_calls="
+                    + str(result.get("model_calls"))
+                    + " tools="
+                    + str(len(result["tools"]))
+                    + "\n"
+                )
+                sys.stdout.flush()
         except deepseek.UpstreamError as error:
             self._write_event("error", {"message": str(error)})
         except (BrokenPipeError, ConnectionResetError):
@@ -871,7 +967,33 @@ class AgentHandler(BaseHTTPRequestHandler):
                 "error", {"message": f"服务端异常：{type(error).__name__}"}
             )
         else:
-            self._emit_reply("".join(parts), user_text, draft_raw)
+            # harness 已经边生成边推了 delta，这里再推一遍就会重复；
+            # mock 走原来的 policy 过滤 + 回放。
+            if settings.mock:
+                self._emit_reply("".join(parts), user_text, draft_raw)
+            wants_act = bool(pending_questions or discuss_rounds >= 2)
+            if prefetched and not proposal and not clarify_raw:
+                proposal = prefetched
+            if (
+                not proposal
+                and not clarify_raw
+                and not prefetched
+                and (wants_act or _looks_like_change("".join(parts)))
+            ):
+                proposal, clarify_raw = self._retry_structure(
+                    settings, messages, goals_count, want="act"
+                )
+                if proposal:
+                    proposal = harness.enrich(proposal, state, tool_context)
+            if not proposal and not clarify_raw and _looks_like_change("".join(parts)):
+                # 模型只写了人话没给改动块：让排程引擎兜底算一版
+                fallback = harness.fallback_plan(state, user_text, tool_context)
+                if fallback:
+                    proposal = fallback
+                    sys.stdout.write("[fallback] planner plan used\n")
+                    sys.stdout.flush()
+            if clarify_raw:
+                self._write_event("clarify", clarify_raw)
             if proposal:
                 self._write_event("proposal", proposal)
         finally:
@@ -879,8 +1001,65 @@ class AgentHandler(BaseHTTPRequestHandler):
                 self._record_profile(
                     user["id"], profile, persona_raw, history, turn
                 )
+                reply_text = "".join(parts).strip()
+                if user_text and reply_text:
+                    memory = conversation_memory.append_turn(
+                        memory,
+                        user=user_text,
+                        assistant=reply_text,
+                        context=context,
+                    )
+                    if proposal:
+                        memory = conversation_memory.clear_pending(memory)
+                        memory["clarify_rounds"] = 0
+                    elif clarify_raw:
+                        memory = conversation_memory.set_pending(
+                            memory, clarify_raw
+                        )
+                        memory["clarify_rounds"] = discuss_rounds + 1
+                    self._save_memory(user["id"], memory)
             self._write_event("done", {})
             self._finish_stream()
+
+    def _retry_structure(
+        self,
+        settings: Settings,
+        messages: list[dict[str, str]],
+        goals_count: int | None,
+        *,
+        want: str,
+    ) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
+        """Ask once more, only for the structured block.
+
+        Some turns come back as prose with no changes and no questions;
+        streaming already delivered the text, so this second, silent call
+        only fills in the missing block.
+        """
+        prompt = (
+            "只输出结构化块，不要任何正文。如果需要用户先回答，输出 clarify 块；"
+            "否则输出 changes 块（至少 1 条）。"
+            if want == "act"
+            else "只输出 clarify 块，2-3 个问题，每题给候选答案。"
+        )
+        retry_messages = list(messages) + [
+            {"role": "user", "content": prompt},
+        ]
+        proposal: dict[str, Any] | None = None
+        clarify: dict[str, Any] | None = None
+        try:
+            producer = mock_agent if settings.mock else deepseek
+            for kind, value in producer.iter_reply(
+                settings, retry_messages, goals_count, context="home"
+            ):
+                if kind == "proposal" and isinstance(value, dict):
+                    proposal = value
+                elif kind == "clarify" and isinstance(value, dict):
+                    clarify = value
+                if proposal or clarify:
+                    break
+        except Exception:  # noqa: BLE001 - 兜底失败就当没发生
+            traceback.print_exc()
+        return proposal, clarify
 
     # ------------------------------------------------------------------
     # Output policy
@@ -950,6 +1129,199 @@ class AgentHandler(BaseHTTPRequestHandler):
         except (AccountError, StorageError, sched_profile.ProfileError):
             traceback.print_exc()
 
+    # ------------------------------------------------------------------
+    # Long-term memory
+    # ------------------------------------------------------------------
+    def _load_memory(self, user_id: str) -> dict[str, Any]:
+        try:
+            stored = self.server.accounts.load_memory(user_id)
+        except (AccountError, StorageError):
+            traceback.print_exc()
+            return conversation_memory.empty_memory()
+        return conversation_memory.ensure_memory(stored)
+
+    def _save_memory(self, user_id: str, memory: dict[str, Any]) -> None:
+        try:
+            self.server.accounts.save_memory(user_id, memory)
+        except (AccountError, StorageError):
+            traceback.print_exc()
+
+    def _refresh_portrait(
+        self,
+        user_id: str,
+        profile: dict[str, Any],
+        state: Any,
+    ) -> dict[str, Any]:
+        """每次对话顺手量一次行为画像，写回 profile 供下一轮使用。"""
+        try:
+            derived = portrait.derive(
+                state, profile.get("derived"), profile.get("feedback")
+            )
+        except Exception:  # noqa: BLE001 - 画像失败不能影响对话
+            traceback.print_exc()
+            return profile
+        updated = dict(profile)
+        updated["derived"] = derived
+        try:
+            self.server.accounts.save_profile(user_id, updated)
+        except (AccountError, StorageError):
+            traceback.print_exc()
+        return updated
+
+    def _handle_observe(self) -> None:
+        """Generate one structured observation for a day / week."""
+        settings = self.server.settings
+        user = self._agent_user()
+        if user is None:
+            return
+        if not self.server.limiter.allow(f"user:{user['id']}"):
+            self._send_json(
+                HTTPStatus.TOO_MANY_REQUESTS, {"error": "请求太频繁，请稍后再试。"}
+            )
+            return
+        try:
+            payload = self._read_json()
+            state = _state(payload)
+            reflection = payload.get("reflection")
+            conversation = payload.get("conversation")
+        except BadRequest as error:
+            self._send_json(HTTPStatus.BAD_REQUEST, {"error": str(error)})
+            return
+
+        reflection_text = reflection.strip()[:2000] if isinstance(reflection, str) else ""
+        chat_text = conversation.strip()[:2000] if isinstance(conversation, str) else ""
+
+        if settings.mock:
+            observation = _mock_observation(state, reflection_text)
+        else:
+            if not settings.configured:
+                self._send_json(
+                    HTTPStatus.SERVICE_UNAVAILABLE,
+                    {"error": "服务端还没有配置模型 key。"},
+                )
+                return
+            messages = observe_messages(state, reflection_text, chat_text)
+            try:
+                raw = deepseek.complete(settings, messages)
+            except deepseek.UpstreamError as error:
+                self._send_json(HTTPStatus.BAD_GATEWAY, {"error": str(error)})
+                return
+            except Exception as error:  # noqa: BLE001
+                traceback.print_exc()
+                self._send_json(
+                    HTTPStatus.INTERNAL_SERVER_ERROR,
+                    {"error": f"生成失败：{type(error).__name__}"},
+                )
+                return
+            observation = _parse_observation(raw)
+            if observation is None:
+                self._send_json(
+                    HTTPStatus.BAD_GATEWAY, {"error": "模型没有给出可用的观察"}
+                )
+                return
+
+        observation["generated_at"] = time.time()
+        self._send_json(HTTPStatus.OK, {"observation": observation})
+
+    def _handle_feedback(self) -> None:
+        """Record what the human actually accepted, for the portrait."""
+        user = self._agent_user()
+        if user is None:
+            return
+        try:
+            payload = self._read_json()
+        except BadRequest as error:
+            self._send_json(HTTPStatus.BAD_REQUEST, {"error": str(error)})
+            return
+        action = str(payload.get("action") or "").strip()
+        source = str(payload.get("source") or "ai").strip()
+        if action not in ("accept", "dismiss", "choose"):
+            self._send_json(
+                HTTPStatus.BAD_REQUEST, {"error": "action 只能是 accept/dismiss/choose"}
+            )
+            return
+        summary = str(payload.get("summary") or "")[:120]
+        changes = payload.get("changes")
+        count = len(changes) if isinstance(changes, list) else 0
+        profile = self._load_profile(user["id"])
+        feedback = dict(profile.get("feedback") or {})
+        counts = dict(feedback.get("counts") or {})
+        key = f"{source}:{action}"
+        counts[key] = int(counts.get(key, 0)) + 1
+        recent = list(feedback.get("recent") or [])
+        recent.append(
+            {
+                "ts": time.time(),
+                "action": action,
+                "source": source,
+                "summary": summary,
+                "changes": count,
+            }
+        )
+        feedback["counts"] = counts
+        feedback["recent"] = recent[-40:]
+        profile["feedback"] = feedback
+        try:
+            self.server.accounts.save_profile(user["id"], profile)
+        except (AccountError, StorageError):
+            traceback.print_exc()
+        self._send_json(HTTPStatus.OK, {"ok": True, "counts": counts})
+
+    def _handle_profile(self) -> None:
+        user = self._agent_user()
+        if user is None:
+            return
+        profile = self._load_profile(user["id"])
+        turn = int(profile.get("turn", 0) or 0)
+        self._send_json(
+            HTTPStatus.OK,
+            {
+                "derived": profile.get("derived") or {},
+                "slots": profile.get("slots") or {},
+                "indicators": profile.get("indicators") or {},
+                "expectation": profile.get("expectation"),
+                "turn": turn,
+                "feedback": profile.get("feedback") or {},
+                "params": sched_profile.scheduling_params(profile),
+                "prompt": sched_profile.prompt_block(profile, turn),
+            },
+        )
+
+    def _handle_history(self) -> None:
+        user = self._agent_user()
+        if user is None:
+            return
+        memory = self._load_memory(user["id"])
+        self._send_json(
+            HTTPStatus.OK,
+            {
+                "sessions": conversation_memory.sessions(memory),
+                "turns": len(memory.get("turns") or []),
+                "notes": list(memory.get("notes") or []),
+            },
+        )
+
+    def _handle_structured(self, operation: Any) -> None:
+        """Run a deterministic planning/reflection operation and return JSON."""
+        if self._agent_user() is None:
+            return
+        try:
+            payload = self._read_json()
+            if not isinstance(payload, dict):
+                raise BadRequest("请求体必须是 JSON 对象")
+            result = operation(payload)
+        except BadRequest as error:
+            self._send_json(HTTPStatus.BAD_REQUEST, {"error": str(error)})
+            return
+        except (ValueError, TypeError) as error:
+            self._send_json(HTTPStatus.BAD_REQUEST, {"error": str(error)})
+            return
+        except Exception as error:  # noqa: BLE001
+            traceback.print_exc()
+            self._send_json(HTTPStatus.INTERNAL_SERVER_ERROR, {"error": f"处理失败：{type(error).__name__}"})
+            return
+        self._send_json(HTTPStatus.OK, result)
+
     def _handle_report(self) -> None:
         settings = self.server.settings
         user = self._agent_user()
@@ -1011,28 +1383,6 @@ class AgentHandler(BaseHTTPRequestHandler):
                 "[policy] " + json.dumps(item, ensure_ascii=False) + "\n"
             )
         self._send_json(HTTPStatus.OK, {"report": report})
-
-    def _handle_structured(self, operation: Any) -> None:
-        """Run a deterministic planning or reflection operation."""
-        if self._agent_user() is None:
-            return
-        try:
-            payload = self._read_json()
-            result = operation(payload)
-        except BadRequest as error:
-            self._send_json(HTTPStatus.BAD_REQUEST, {"error": str(error)})
-            return
-        except (ValueError, TypeError) as error:
-            self._send_json(HTTPStatus.BAD_REQUEST, {"error": str(error)})
-            return
-        except Exception as error:  # noqa: BLE001 - report, never crash
-            traceback.print_exc()
-            self._send_json(
-                HTTPStatus.INTERNAL_SERVER_ERROR,
-                {"error": f"处理失败：{type(error).__name__}"},
-            )
-            return
-        self._send_json(HTTPStatus.OK, result)
 
     # ------------------------------------------------------------------
     # Server-sent events
@@ -1121,6 +1471,50 @@ class AgentHandler(BaseHTTPRequestHandler):
         self.log_message(fmt, *args)
 
 
+VAGUE_VERBS = (
+    "准备", "改", "写", "跑", "做实验", "投", "复习", "整理", "规划", "安排", "学", "练",
+)
+_CONCRETE_RE = None
+
+
+def _concrete(text: str) -> bool:
+    global _CONCRETE_RE
+    if _CONCRETE_RE is None:
+        import re as _re
+
+        _CONCRETE_RE = _re.compile(
+            r"(\d+\s*(分钟|小时|天)|\d+\s*[号日]|\d{1,2}:\d{2}|之前|截止|明天|今天|后天)"
+        )
+    return bool(_CONCRETE_RE.search(text))
+
+
+CHANGE_WORDS = ("挪", "移到", "改成", "新增", "删掉", "删除", "安排", "排进", "往后", "提前", "加一个", "占")
+
+
+def _looks_like_change(text: str) -> bool:
+    clean = (text or "").strip()
+    if len(clean) < 6:
+        return False
+    return any(word in clean for word in CHANGE_WORDS)
+
+
+def _needs_discussion(text: str, *, rounds_done: int = 0, has_pending: bool = False) -> bool:
+    """First turn on a vague, multi-item request should be a discussion round."""
+    if has_pending:
+        return False
+    if rounds_done >= 2:
+        return False
+    clean = (text or "").strip()
+    if len(clean) < 8:
+        return False
+    if not any(word in clean for word in VAGUE_VERBS):
+        return False
+    if not _concrete(clean):
+        return True
+    items = sum(clean.count(mark) for mark in ("，", "。", "；", ",", ";"))
+    return items >= 3
+
+
 def _state(payload: dict[str, Any]) -> dict[str, Any]:
     state = payload.get("state")
     if not isinstance(state, dict):
@@ -1167,6 +1561,61 @@ def _goals_count(state: dict[str, Any]) -> int | None:
     if isinstance(goals, list):
         return min(len(goals), 20)
     return None
+
+
+def _parse_observation(raw: str) -> dict[str, Any] | None:
+    """Pull the JSON object out of the model's observation reply."""
+    body = (raw or "").strip()
+    if not body:
+        return None
+    if body.startswith("```"):
+        body = body.strip("`")
+    start = body.find("{")
+    end = body.rfind("}")
+    if start == -1 or end <= start:
+        return None
+    try:
+        payload = json.loads(body[start:end + 1])
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(payload, dict):
+        return None
+
+    def clean_list(value: Any, limit: int = 3) -> list[str]:
+        if not isinstance(value, list):
+            return []
+        out = []
+        for item in value[:limit]:
+            if isinstance(item, str) and item.strip():
+                out.append(" ".join(item.split())[:160])
+        return out
+
+    observation = {
+        "facts": clean_list(payload.get("facts")),
+        "patterns": clean_list(payload.get("patterns"), 2),
+        "experiment": " ".join(str(payload.get("experiment") or "").split())[:160],
+        "questions": clean_list(payload.get("questions"), 1),
+    }
+    if not observation["facts"] and not observation["patterns"]:
+        return None
+    return observation
+
+
+def _mock_observation(state: dict[str, Any], reflection: str) -> dict[str, Any]:
+    scheduled = state.get("scheduled") if isinstance(state.get("scheduled"), list) else []
+    tasks = state.get("tasks") if isinstance(state.get("tasks"), list) else []
+    done = sum(1 for task in tasks if isinstance(task, dict) and task.get("done"))
+    minutes = sum(int(row.get("duration") or 0) for row in scheduled if isinstance(row, dict))
+    return {
+        "facts": [
+            f"当天有 {len(scheduled)} 个时间块，合计 {minutes} 分钟（估算）。",
+            f"待办 {len(tasks)} 条，完成 {done} 条。",
+        ],
+        "patterns": ["记录还不多，暂时看不出稳定模式。"],
+        "experiment": "明天先给最重要的一件事留一个 25 分钟的起步块。",
+        "questions": ["今天哪一段投入最值得保留？"],
+        "source": "mock",
+    }
 
 
 def _mock_report(question: str, state: dict[str, Any]) -> str:

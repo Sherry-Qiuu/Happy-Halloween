@@ -11,9 +11,11 @@ import json
 import re
 from typing import Any, Iterable
 
-MAX_CHANGES = 4
+MAX_CHANGES = 12
 MAX_TITLE = 60
 MAX_GOAL = 30
+MAX_GOAL_TITLE = 40
+MAX_MILESTONES = 6
 MAX_TEXT = 80
 MAX_DURATION = 240
 MIN_DURATION = 5
@@ -28,6 +30,7 @@ CHANGE_TYPES = (
     "add_task",
     "add_next_action",
     "log_actual",
+    "add_goal",
 )
 
 
@@ -109,6 +112,81 @@ def _clean_index(value: Any, goals_count: int | None) -> int | None:
     return value
 
 
+def _clean_milestones(raw: Any) -> list[dict[str, Any]]:
+    """Normalize the optional milestone list of an ``add_goal`` change."""
+    if not isinstance(raw, list):
+        return []
+    out: list[dict[str, Any]] = []
+    for item in raw[:MAX_MILESTONES]:
+        if isinstance(item, str):
+            title = _clean_text(item, MAX_TITLE)
+            if title:
+                out.append({"title": title})
+            continue
+        if not isinstance(item, dict):
+            continue
+        title = _clean_text(item.get("title"), MAX_TITLE)
+        if not title:
+            continue
+        milestone: dict[str, Any] = {"title": title}
+        date = normalize_date(item.get("date"))
+        if date:
+            milestone["date"] = date
+        minutes = normalize_duration(item.get("minutes"))
+        if minutes:
+            milestone["minutes"] = minutes
+        out.append(milestone)
+    return out
+
+
+MAX_CLARIFY_QUESTIONS = 3
+MAX_QUESTION_CHARS = 60
+MAX_CHOICES = 4
+
+
+def sanitize_clarify(raw: Any) -> dict[str, Any] | None:
+    """Normalize the optional ``clarify`` block of a turn.
+
+    Shape::
+
+        {"summary": "还没法直接排，需要先确认两件事",
+         "questions": [{"q": "论文现在改到哪一步？",
+                        "choices": ["刚开题", "初稿完成", "只差格式"]}]}
+
+    The model uses this instead of a proposal when the request is too
+    vague to act on; the browser renders it as an answerable card.
+    """
+    if not isinstance(raw, dict):
+        return None
+    summary = _clean_text(raw.get("summary"), MAX_TEXT) or "先确认几件事"
+    questions: list[dict[str, Any]] = []
+    rows = raw.get("questions")
+    if not isinstance(rows, list):
+        return None
+    for item in rows[:MAX_CLARIFY_QUESTIONS]:
+        if isinstance(item, str):
+            text_value = _clean_text(item, MAX_QUESTION_CHARS)
+            if text_value:
+                questions.append({"q": text_value, "choices": []})
+            continue
+        if not isinstance(item, dict):
+            continue
+        text_value = _clean_text(item.get("q") or item.get("question"), MAX_QUESTION_CHARS)
+        if not text_value:
+            continue
+        choices: list[str] = []
+        raw_choices = item.get("choices")
+        if isinstance(raw_choices, list):
+            for choice in raw_choices[:MAX_CHOICES]:
+                clean = _clean_text(choice, 24)
+                if clean and clean not in choices:
+                    choices.append(clean)
+        questions.append({"q": text_value, "choices": choices})
+    if not questions:
+        return None
+    return {"summary": summary, "questions": questions}
+
+
 def sanitize_change(
     raw: Any, goals_count: int | None = None
 ) -> dict[str, Any] | None:
@@ -137,6 +215,25 @@ def sanitize_change(
             return None
         change["start"] = start
         change["duration"] = duration
+        return change
+
+    if kind == "add_goal":
+        title = _clean_text(raw.get("title"), MAX_GOAL_TITLE)
+        if not title:
+            return None
+        change: dict[str, Any] = {"type": kind, "title": title}
+        standard = _clean_text(raw.get("standard"), MAX_TEXT)
+        if standard:
+            change["standard"] = standard
+        date = normalize_date(raw.get("date"))
+        if date:
+            change["date"] = date
+        category = _clean_text(raw.get("category"), 12)
+        if category:
+            change["category"] = category
+        milestones = _clean_milestones(raw.get("milestones"))
+        if milestones:
+            change["milestones"] = milestones
         return change
 
     if kind == "add_task":

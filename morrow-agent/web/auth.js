@@ -5,9 +5,9 @@
  * session cookie and mirrors the same document to /api/data, without
  * rewriting the prototype's render functions:
  *
- *   - auth.js defines window.Morrow before the prototype's inline script;
- *   - index.html reads/writes localStorage through Morrow.dataKey();
- *   - save() calls Morrow.queueSave() so every user edit is debounced to the
+ *   - auth.js defines window.XJ before the prototype's inline script;
+ *   - index.html reads/writes localStorage through XJ.dataKey();
+ *   - save() calls XJ.queueSave() so every user edit is debounced to the
  *     server;
  *   - every account action calls the JSON API in server.py.
  *
@@ -77,29 +77,6 @@
       /* private mode: nothing to clear */
     }
   }
-
-  // One-time bridge from the pre-rename namespace (xingjian-*) to Morrow's
-  // own keys, so a browser that already holds a schedule keeps it.
-  function migrateLegacyKeys() {
-    try {
-      const legacy = [];
-      for (let i = 0; i < localStorage.length; i += 1) {
-        const key = localStorage.key(i);
-        if (key && key.indexOf('xingjian-') === 0) legacy.push(key);
-      }
-      legacy.forEach((key) => {
-        const next = 'morrow-' + key.slice('xingjian-'.length);
-        if (localStorage.getItem(next) === null) {
-          const value = localStorage.getItem(key);
-          if (value !== null) localStorage.setItem(next, value);
-        }
-      });
-    } catch (_error) {
-      /* private mode: nothing to migrate */
-    }
-  }
-
-  migrateLegacyKeys();
 
   function scope() {
     return readStorage(SCOPE_KEY) || GUEST;
@@ -226,7 +203,7 @@
   // ------------------------------------------------------------------
   // Public surface used by index.html and agent.js
   // ------------------------------------------------------------------
-  const Morrow = {
+  const XJ = {
     scope: scope,
     dataKey: dataKey,
     queueSave: queueSave,
@@ -236,7 +213,7 @@
     openAccount: openAccount,
     start: start
   };
-  window.Morrow = Morrow;
+  window.XJ = XJ;
 
   // ------------------------------------------------------------------
   // Top bar and sync state
@@ -251,7 +228,8 @@
       saving: '保存中…',
       error: '未同步',
       expired: '登录已过期',
-      local: '本地演示'
+      local: '本地演示',
+      offline: '网络不稳'
     };
     element.textContent = labels[next] || '已同步';
     element.setAttribute('data-state', next);
@@ -347,8 +325,28 @@
     paintUser();
     setSync('loading');
 
+    // file:// 打开（双击 index.html）时没有后端可连：直接进本地演示模式
+    if (location.protocol === 'file:') {
+      currentUser = { id: 'local-demo', username: 'local', display_name: '明' };
+      writeStorage(USER_KEY, JSON.stringify(currentUser));
+      localMode = true;
+      document.body.classList.remove('xj-booting', 'xj-locked');
+      window.__xjReady = true;
+      setSync('local');
+      try {
+        render();
+      } catch (error) {
+        console.error('[morrow] local render failed', error);
+      }
+      return;
+    }
+
     try {
       const health = await request('/api/health');
+      if (health.dev_bypass_auth) {
+        enterDevMode();
+        return;
+      }
       emailRequired =
         health.email_required === undefined
           ? true
@@ -418,7 +416,7 @@
   }
 
   function ready() {
-    document.body.classList.remove('morrow-booting', 'morrow-locked');
+    document.body.classList.remove('xj-booting', 'xj-locked');
     hideAuth();
     window.__xjReady = true;
     setSync(syncState === 'saving' ? 'saving' : 'synced');
@@ -440,6 +438,27 @@
     saveTimer = setTimeout(flushSave, SAVE_DELAY);
   }
 
+  let retryTimer = null;
+  let retryDelay = 5000;
+
+  function scheduleRetry() {
+    if (retryTimer) return;
+    retryTimer = setTimeout(function () {
+      retryTimer = null;
+      retryDelay = Math.min(60000, retryDelay * 2);
+      flushSave();
+    }, retryDelay);
+  }
+
+  window.addEventListener('online', function () {
+    retryDelay = 5000;
+    flushSave();
+  });
+
+  document.addEventListener('visibilitychange', function () {
+    if (!document.hidden) flushSave();
+  });
+
   async function flushSave() {
     if (saving || !dirty || localMode || !currentUser) return;
     saving = true;
@@ -453,6 +472,11 @@
       });
       lastSavedAt = payload.updated_at || '';
       removeStorage(pendingKey());
+      retryDelay = 5000;
+      if (retryTimer) {
+        clearTimeout(retryTimer);
+        retryTimer = null;
+      }
       setSync('synced');
     } catch (error) {
       writeStorage(pendingKey(), JSON.stringify(snapshot));
@@ -463,11 +487,19 @@
           message: '登录已过期，请重新登录。页面里的改动仍在本地。'
         });
       } else {
-        setSync('error');
+        // 网络抖动、隧道断了、5xx 都算“暂时同步不上”：
+        // 改动已经在本地和 pending 里，恢复后自动补传，不要吓用户。
+        const transient = !error.status || error.status >= 500;
+        setSync(transient ? 'offline' : 'error');
         console.error('[morrow] save failed', error);
         if (typeof toast === 'function') {
-          toast('同步失败：' + error.message);
+          toast(
+            transient
+              ? '网络不稳，改动已先存在本地，恢复后会自动补传'
+              : '同步失败：' + error.message
+          );
         }
+        if (transient) scheduleRetry();
       }
     } finally {
       saving = false;
@@ -498,13 +530,13 @@
   // ------------------------------------------------------------------
   function showAuth(options) {
     const settings = options || {};
-    document.body.classList.add('morrow-locked');
-    document.body.classList.remove('morrow-booting');
+    document.body.classList.add('xj-locked');
+    document.body.classList.remove('xj-booting');
 
-    let overlay = document.getElementById('morrow-auth');
+    let overlay = document.getElementById('xj-auth');
     if (!overlay) {
       overlay = document.createElement('div');
-      overlay.id = 'morrow-auth';
+      overlay.id = 'xj-auth';
       overlay.innerHTML =
         '<div class="authwrap">' +
         '<div class="authbrand">Morrow<small>让计划贴近生活</small></div>' +
@@ -557,9 +589,9 @@
 
   function hideAuth() {
     resetCodeCountdown();
-    const overlay = document.getElementById('morrow-auth');
+    const overlay = document.getElementById('xj-auth');
     if (overlay) overlay.remove();
-    document.body.classList.remove('morrow-locked');
+    document.body.classList.remove('xj-locked');
   }
 
   function renderAuthForm(overlay) {
@@ -804,7 +836,7 @@
         });
         authMode = 'login';
         resetCodeCountdown();
-        renderAuthForm(document.getElementById('morrow-auth'));
+        renderAuthForm(document.getElementById('xj-auth'));
         setAuthNote(
           payload.message || '密码已重置，请用新密码登录。'
         );
@@ -914,6 +946,18 @@
     element.hidden = !message;
   }
 
+  function enterDevMode() {
+    // Dev bypass intentionally uses browser-local persistence; account APIs stay disabled.
+    localMode = true;
+    currentUser = { id: 'dev', username: 'dev', display_name: '本地开发' };
+    writeStorage(USER_KEY, JSON.stringify(currentUser));
+    data = normalizeData(data);
+    document.body.classList.remove('xj-booting', 'xj-locked');
+    window.__xjReady = true;
+    setSync('local');
+    try { render(); } catch (error) { console.error('[morrow] dev render failed', error); }
+  }
+
   function enterLocalMode() {
     localMode = true;
     currentUser = null;
@@ -931,7 +975,7 @@
       data = normalizeData(null);
     }
     hideAuth();
-    document.body.classList.remove('morrow-booting', 'morrow-locked');
+    document.body.classList.remove('xj-booting', 'xj-locked');
     window.__xjReady = true;
     setSync('local');
     try {

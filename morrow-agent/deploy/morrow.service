@@ -13,7 +13,7 @@
 # MORROW_DATA_DIR=/var/lib/morrow in morrow.env.
 
 [Unit]
-Description=Morrow planning app (accounts, data, DeepSeek agent)
+Description=Xingjian planning app (accounts, data, DeepSeek agent)
 After=network-online.target
 Wants=network-online.target
 

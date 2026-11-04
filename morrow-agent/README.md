@@ -29,6 +29,7 @@ python server.py
 - 不配 `DEEPSEEK_API_KEY` 也能用：AI 面板显示「AI 离线」，其他功能正常。
 - 想让 AI 真实回复：`Copy-Item .env.example .env`，填入 key 后重启。
 - 离线演示 AI：`$env:AGENT_MOCK='1'; python server.py`。
+- 跳过登录的本地开发：使用 `start-local.ps1 -NoTunnel`，脚本会启用 `MORROW_DEV_BYPASS_AUTH=1`；仅适用于本机演示，生产环境保持 `0`。
 - 换端口：`$env:PORT='8080'; python server.py`。
 
 也可以双击 `web/index.html`：页面会提示连不上服务，并给出「先以本地演示模式打开」。
@@ -461,3 +462,25 @@ python scripts/profile_demo.py          # 七轮行为：写入、拒绝、漂�
 ```
 
 边界：画像只改排布参数（块长、时段、缓冲、措辞），不改供给（任务、目标、是否主动提议）；`scheduling_params()["proactive"]` 固定为 `L1`。
+
+---
+
+## 6. AI 架构（harness + tools）
+
+一轮对话由三部分组成，顺序不能变：
+
+`
+浏览器 state ──▶ harness.run_turn ──▶ 模型(带 tools) ──▶ 工具结果回灌 ──▶ 结构化块 ──▶ 校验 ──▶ 前端预览
+`
+
+| 文件 | 职责 |
+| --- | --- |
+| \	ools.py\ | 确定性工具：\get_day\ / \search_blocks\ / \ree_slots\，只读 state，不写库 |
+| \deepseek_tools.py\ | 流式 chat + 原生 \	ool_calls\ 解析 |
+| \harness.py\ | 最多 3 步、每步 2 个工具的循环；\alidate_plan()\ 拦锁定项/时段冲突/越界时长 |
+| \server.py\ | 真实模型走 harness，mock 模式保持原路径；文本只推一次 |
+
+约束：
+
+- 模型只能**申请**数据，不能自己算时间；违反硬约束的提案会被退回重写一次，仍不合法就丢弃；
+- 任何写入都必须经过前端「采用建议」，后端不提供模型直写接口。

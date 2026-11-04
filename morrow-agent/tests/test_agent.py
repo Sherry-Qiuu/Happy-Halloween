@@ -8,6 +8,7 @@ mock producer through the real streaming path.
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import sys
 import threading
@@ -17,6 +18,12 @@ import urllib.request
 import uuid
 from dataclasses import replace
 from pathlib import Path
+
+# Tests must not inherit a developer's local .env (real API key, dev bypass).
+os.environ["MORROW_SKIP_ENV_FILE"] = "1"
+os.environ.pop("MORROW_DEV_BYPASS_AUTH", None)
+os.environ.pop("MORROW_REQUIRE_EMAIL", None)
+os.environ.pop("AGENT_MOCK", None)
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
@@ -61,20 +68,64 @@ class ProtocolTests(unittest.TestCase):
             {"type": "add_event", "date": "2026-10-31", "title": "x",
              "start": "25:00", "duration": 30},
             {"type": "add_task", "title": "", "minutes": 20},
-            {"type": "add_task", "title": "a", "minutes": 10},
-            {"type": "add_task", "title": "b", "minutes": 10},
-            {"type": "add_task", "title": "c", "minutes": 10},
-            {"type": "add_task", "title": "d", "minutes": 10},
-            {"type": "add_task", "title": "e", "minutes": 10},
+        ]
+        raw += [
+            {"type": "add_task", "title": f"任务{i}", "minutes": 10}
+            for i in range(protocol.MAX_CHANGES + 3)
         ]
         changes = protocol.sanitize_changes(raw, goals_count=2)
         self.assertEqual(len(changes), protocol.MAX_CHANGES)
         self.assertTrue(all(item["type"] == "add_task" for item in changes))
 
+    def test_add_goal_is_normalized(self) -> None:
+        raw = [
+            {"type": "add_goal", "title": "拿到京东 offer",
+             "standard": "完成三轮面试并通过", "date": "2026-11-30",
+             "category": "工作"},
+            {"type": "add_goal", "title": ""},
+            {"type": "add_goal", "title": "只有标题"},
+        ]
+        changes = protocol.sanitize_changes(raw, goals_count=2)
+        self.assertEqual([item["type"] for item in changes],
+                         ["add_goal", "add_goal"])
+        self.assertEqual(changes[0]["date"], "2026-11-30")
+        self.assertEqual(changes[0]["category"], "工作")
+        self.assertNotIn("date", changes[1])
+        self.assertEqual(changes[1]["title"], "只有标题")
+
     def test_action_index_respects_goal_count(self) -> None:
         raw = [{"type": "add_next_action", "goal_index": 5,
                 "text": "写稿", "minutes": 30}]
         self.assertEqual(protocol.sanitize_changes(raw, goals_count=2), [])
+
+    def test_portrait_derives_from_state(self) -> None:
+        import portrait
+
+        state = {
+            "scheduled": [
+                {"title": "写论文", "date": "2026-11-01", "start": "09:00", "duration": 90},
+                {"title": "复盘", "date": "2026-11-01", "start": "20:00", "duration": 30},
+            ],
+            "used": [
+                {"title": "写论文", "date": "2026-11-01", "start": "09:10", "duration": 100},
+            ],
+            "tasks": [
+                {"title": "a", "done": True},
+                {"title": "b", "done": False},
+            ],
+            "goals": [{"title": "目标"}],
+            "schedule_days": ["2026-11-01"],
+        }
+        derived = portrait.derive(state)
+        self.assertEqual(derived["samples"], 5)
+        self.assertEqual(derived["block_minutes"], 60)
+        self.assertEqual(derived["goal_count"], 1)
+        self.assertEqual(derived["completion"], 0.5)
+        self.assertAlmostEqual(derived["estimate_bias"], round(100 / 120, 2))
+        self.assertIn("density", derived)
+        text = portrait.prompt_block(derived)
+        self.assertIn("常见时间块", text)
+        self.assertEqual(portrait.prompt_block({}), "")
 
     def test_sse_frame_is_valid(self) -> None:
         frame = protocol.sse("delta", {"text": "你好"}).decode("utf-8")
@@ -292,6 +343,55 @@ class HttpTests(unittest.TestCase):
         )
         self.assertEqual(status, 200)
         self.assertIn("记录到的事实", body["report"])
+
+    def test_structured_decompose_endpoint(self) -> None:
+        status, body = self.post(
+            "/api/agent/decompose",
+            {"goal": "准备演示", "steps": ["整理素材"], "count": 3},
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(body["goal"], "准备演示")
+        self.assertEqual(body["count"], 3)
+        self.assertEqual(body["steps"][0]["title"], "整理素材")
+        self.assertEqual(body["steps"][0]["status"], "todo")
+
+    def test_structured_replan_endpoint(self) -> None:
+        status, body = self.post(
+            "/api/agent/replan",
+            {
+                "events": [
+                    {"id": "focus", "title": "写稿", "day": 0, "start": "09:00", "dur": 60}
+                ],
+                "disruption": {"kind": "insert", "day": 0, "start": 9 * 60, "dur": 30, "title": "临时会议"},
+                "persona": "P2",
+            },
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(body["mode"], "core")
+        self.assertIn("changes", body)
+        self.assertGreaterEqual(len(body["changes"]), 1)
+        self.assertTrue(any(change.get("title") == "临时会议" for change in body["changes"]))
+
+    def test_structured_reflection_endpoint(self) -> None:
+        status, body = self.post(
+            "/api/agent/reflection",
+            {"state": {"tasks": [{"done": True}, {"done": False}]}, "reflection": "完成了准备"},
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(body["source"], "structured")
+        self.assertIn("2 项待办", body["facts"][0])
+        self.assertIn("1 项已完成", body["facts"][0])
+
+    def test_structured_endpoint_requires_login(self) -> None:
+        request = urllib.request.Request(
+            self.url("/api/agent/decompose"),
+            data=json.dumps({"goal": "x"}).encode("utf-8"),
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        with self.assertRaises(urllib.error.HTTPError) as error:
+            urllib.request.urlopen(request, timeout=10)
+        self.assertEqual(error.exception.code, 401)
 
     def test_unknown_endpoint(self) -> None:
         status, _, _ = self.get("/api/nope")

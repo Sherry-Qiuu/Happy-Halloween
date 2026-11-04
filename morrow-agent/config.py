@@ -101,6 +101,8 @@ class Settings:
     # When false, sign-up needs no email code and the email field is
     # optional. Keep true unless outbound mail is unavailable.
     require_email: bool = True
+    # Development-only bypass for local demos; never enable in production.
+    dev_bypass_auth: bool = False
 
     # Email verification (registration and password reset). The SMTP
     # password is a QQ Mail "授权码", never the mailbox login password.
@@ -167,8 +169,17 @@ class Settings:
 
 
 def load_settings(env_file: Path | None = None) -> Settings:
-    """Build a :class:`Settings` object from the environment."""
-    load_env_file(env_file or (ROOT / ".env"))
+    """Build a :class:`Settings` object from the environment.
+
+    A local ``.env`` is read unless ``MORROW_SKIP_ENV_FILE=1`` is set; the
+    test suite sets that so a developer's real key and mail settings never
+    leak into the fixtures.
+    """
+    if env_file is None:
+        if not os.environ.get("MORROW_SKIP_ENV_FILE"):
+            load_env_file(ROOT / ".env")
+    else:
+        load_env_file(env_file)
     port = os.environ.get("PORT", "").strip() or os.environ.get(
         "AGENT_PORT", ""
     ).strip()
@@ -184,7 +195,7 @@ def load_settings(env_file: Path | None = None) -> Settings:
         ).strip(),
         model=os.environ.get("DEEPSEEK_MODEL", DEFAULT_MODEL).strip(),
         temperature=_as_float("AGENT_TEMPERATURE", 0.4),
-        max_tokens=_as_int("AGENT_MAX_TOKENS", 1200),
+        max_tokens=_as_int("AGENT_MAX_TOKENS", 2400),
         timeout=_as_float("AGENT_TIMEOUT", 60.0),
         host=os.environ.get("HOST", "127.0.0.1").strip(),
         port=int(port) if port else 8000,
@@ -207,6 +218,7 @@ def load_settings(env_file: Path | None = None) -> Settings:
         trust_proxy=_as_bool("MORROW_TRUST_PROXY"),
         max_users=_as_int("MORROW_MAX_USERS", 5_000),
         require_email=_as_bool("MORROW_REQUIRE_EMAIL", True),
+        dev_bypass_auth=_as_bool("MORROW_DEV_BYPASS_AUTH", False),
         mail_transport=_choice(
             "MAIL_TRANSPORT", "smtp", ("smtp", "console")
         ),

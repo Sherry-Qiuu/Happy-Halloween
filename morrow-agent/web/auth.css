@@ -4,12 +4,12 @@
  * design tokens (--ink, --green, --line, --soft, --bg).
  */
 
-body.morrow-booting .app {
+body.xj-booting .app {
   opacity: 0;
   pointer-events: none;
 }
 
-body.morrow-booting::after {
+body.xj-booting::after {
   content: "Morrow";
   position: fixed;
   inset: 0;
@@ -22,11 +22,11 @@ body.morrow-booting::after {
   z-index: 60;
 }
 
-body.morrow-locked {
+body.xj-locked {
   overflow: hidden;
 }
 
-body.morrow-locked .app {
+body.xj-locked .app {
   display: none;
 }
 
@@ -96,7 +96,7 @@ body.morrow-locked .app {
 /* ------------------------------------------------------------------ */
 /* Login / register                                                    */
 /* ------------------------------------------------------------------ */
-#morrow-auth {
+#xj-auth {
   position: fixed;
   inset: 0;
   z-index: 1000;
@@ -426,7 +426,7 @@ button.danger:disabled {
     width: 100%;
   }
 
-  #morrow-auth {
+  #xj-auth {
     padding: 16px;
     align-items: start;
   }

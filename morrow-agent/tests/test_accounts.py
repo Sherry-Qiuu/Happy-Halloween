@@ -8,6 +8,7 @@ does not grant write access to the system temp directory).
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import sys
 import threading
@@ -18,6 +19,13 @@ import uuid
 from dataclasses import replace
 from http.cookiejar import CookieJar
 from pathlib import Path
+
+# Tests must not inherit a developer's local .env (real API key, mail
+# transport, dev bypass). Pin the fixture behaviour instead.
+os.environ["MORROW_SKIP_ENV_FILE"] = "1"
+os.environ.pop("MORROW_DEV_BYPASS_AUTH", None)
+os.environ.pop("MORROW_REQUIRE_EMAIL", None)
+os.environ.pop("AGENT_MOCK", None)
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:

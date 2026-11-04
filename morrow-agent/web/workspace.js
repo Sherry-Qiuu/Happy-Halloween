@@ -1,4 +1,4 @@
-let miniSelectedDate='2026-10-31',memoryFilter='全部',memoryQuery='';
+let miniSelectedDate=XJ_TODAY,memoryFilter='全部',memoryQuery='';
 const WORKSPACE_KEY='morrow-workspace-v11';
 let workspaceData;try{workspaceData=JSON.parse(localStorage.getItem(WORKSPACE_KEY))}catch{}
 workspaceData??={customTemplates:{daily:[],weekly:[]},memory:[{id:'m1',type:'时间偏好',text:'希望把需要专注的任务优先放在上午。',source:'用户确认的演示偏好',enabled:true},{id:'m2',type:'目标背景',text:'正在准备英语面试，并整理个人作品集。',source:'当前目标 · 演示',enabled:true},{id:'m3',type:'安排边界',text:'锁定的直播课程不能参与灵活调整。',source:'任务锁定设置 · 演示',enabled:true},{id:'m4',type:'待确认观察',text:'是否更适合用较短的学习时段推进任务？',source:'AI 观察草案，尚未确认为偏好',enabled:false}]};

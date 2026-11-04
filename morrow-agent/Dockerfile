@@ -1,5 +1,8 @@
 FROM python:3.12-slim
 
+# 构建上下文是仓库根目录（见 render.yaml 的 dockerContext），
+# 因为排程引擎在 morrow-agent 外面：backend_services 会去 ../calendar-rescheduler 找 core.py。
+
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     HOST=0.0.0.0 \
@@ -9,12 +12,13 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
-# No third-party dependencies: accounts, the API, and the static files
-# all run on the Python standard library.
-COPY accounts.py config.py prompts.py protocol.py deepseek.py \
-     mock_agent.py policy.py sched_profile.py mailer.py verification.py \
-     server.py ./
-COPY web ./web
+# 纯标准库，没有任何第三方依赖
+COPY morrow-agent/*.py ./
+COPY morrow-agent/web ./web
+
+# 排程引擎放到 /calendar-rescheduler，正好是 /app 的上一级，
+# backend_services 里的 parents[1] / "calendar-rescheduler" 就能命中。
+COPY calendar-rescheduler /calendar-rescheduler
 
 RUN useradd --create-home --uid 10001 --shell /usr/sbin/nologin app \
     && mkdir -p /data \
