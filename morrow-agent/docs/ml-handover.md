@@ -27,9 +27,10 @@ Agent 已经会：从用户真实数据里派生行为画像（块长、密度�
 | 层 | 内容 | 状态 | 触发点 |
 | --- | --- | --- | --- |
 | **L0** | 每次保存的整份 state 快照（gzip，按用户按天） | ✅ 已上线 | `PUT /api/data` → `_archive_state()` |
-| **L1** | 提案生命周期：shown / accepted / rejected / edited | ⬜ 待做 | 前端上报 + `/api/agent/event` |
-| **L2** | 块级事件：planned / started / completed / moved / dropped | ⬜ 待做 | 拖拽、勾选、开始 |
+| **L1** | 提案被采纳 / 拒绝 / 修改 | ✅ 已上线 | `POST /api/agent/feedback` → `_record_proposal_event()` |
+| **L2** | 块级：planned / moved / removed / resized，任务完成 | ✅ 已上线 | `PUT /api/data` 时 `events.diff_state()` 推 |
 | **L3** | 语言特征（长度、语气词比例、正式度、是否问句） | ⬜ 待做 | 每轮对话 |
+| 原文 | 对话文本（脱敏后） | ✅ 已上线 | `_capture_turn()` |
 
 L0 落在 `MORROW_DATA_DIR/snapshots/<user_id>/<YYYY-MM-DD>.jsonl.gz`，每行：
 

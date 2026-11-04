@@ -36,19 +36,23 @@ Operations
 
 from __future__ import annotations
 
+import io
 import json
 import mimetypes
 import sys
 import threading
 import time
 import traceback
+import zipfile
 from http import HTTPStatus
 from http.cookies import CookieError, SimpleCookie
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
 from urllib.parse import unquote, urlsplit
 
+import conversations
 import deepseek
+import events
 import mock_agent
 import policy
 import sched_profile
@@ -208,6 +212,9 @@ class AgentHandler(BaseHTTPRequestHandler):
         if path == "/api/agent/profile":
             self._handle_profile()
             return
+        if path == "/api/account/export":
+            self._handle_export()
+            return
         if path.startswith("/api/"):
             self._send_json(
                 HTTPStatus.NOT_FOUND,
@@ -238,6 +245,9 @@ class AgentHandler(BaseHTTPRequestHandler):
             return
         if path == "/api/agent/observe":
             self._handle_observe()
+            return
+        if path == "/api/agent/event":
+            self._handle_event()
             return
         routes = {
             "/api/auth/register": self._handle_register,
@@ -338,6 +348,31 @@ class AgentHandler(BaseHTTPRequestHandler):
         self._security_headers()
         for name, value in (headers or {}).items():
             self.send_header(name, value)
+        self.end_headers()
+        self.close_connection = True
+        try:
+            self.wfile.write(body)
+        except (BrokenPipeError, ConnectionResetError):
+            pass
+
+    def _send_bytes(
+        self,
+        body: bytes,
+        content_type: str,
+        *,
+        filename: str | None = None,
+    ) -> None:
+        self.send_response(HTTPStatus.OK)
+        self.send_header("Content-Type", content_type)
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("Connection", "close")
+        if filename:
+            self.send_header(
+                "Content-Disposition", f'attachment; filename="{filename}"'
+            )
+        self._cors_headers()
+        self._security_headers()
         self.end_headers()
         self.close_connection = True
         try:
@@ -758,23 +793,50 @@ class AgentHandler(BaseHTTPRequestHandler):
         payload = self._read_json(MAX_DATA_BODY)
         if "data" not in payload:
             raise BadRequest("缺少 data")
+        previous = self._previous_state(user["id"])
         updated_at = self.server.accounts.save_data(
             user["id"], payload["data"]
         )
-        self._archive_state(user["id"], payload["data"])
+        self._archive_state(user["id"], payload["data"], previous)
         self._send_json(
             HTTPStatus.OK, {"updated_at": updated_at}
         )
 
-    def _archive_state(self, user_id: str, state: Any) -> None:
-        """L0: keep the version being overwritten (see snapshots.py)."""
+    def _previous_state(self, user_id: str) -> dict[str, Any] | None:
+        """The state the browser is about to overwrite, for the L2 diff."""
         settings = self.server.settings
         if not settings.snapshot_enabled or settings.snapshot_dir is None:
-            return
+            return None
         try:
-            snapshots.append(settings.snapshot_dir, user_id, state)
+            rows = snapshots.read(settings.snapshot_dir, user_id, limit=1)
+        except (OSError, ValueError):
+            return None
+        if not rows:
+            return None
+        state = rows[-1].get("state")
+        return state if isinstance(state, dict) else None
+
+    def _archive_state(
+        self,
+        user_id: str,
+        state: Any,
+        previous: dict[str, Any] | None = None,
+    ) -> None:
+        """L0 snapshot plus the L2 events that the save implies."""
+        settings = self.server.settings
+        try:
+            if settings.snapshot_enabled and settings.snapshot_dir is not None:
+                snapshots.append(settings.snapshot_dir, user_id, state)
         except (OSError, ValueError):
             # Archiving must never break the save the user asked for.
+            traceback.print_exc()
+        if settings.events_dir is None or previous is None:
+            return
+        try:
+            items = events.diff_state(previous, state)
+            if items:
+                events.append_many(settings.events_dir, user_id, items)
+        except (OSError, ValueError):
             traceback.print_exc()
 
     def _handle_update_account(self) -> None:
@@ -824,6 +886,16 @@ class AgentHandler(BaseHTTPRequestHandler):
         if settings.snapshot_dir is not None:
             try:
                 snapshots.remove_user(settings.snapshot_dir, user["id"])
+            except (OSError, ValueError):
+                traceback.print_exc()
+        for remover, folder in (
+            (events.remove_user, settings.events_dir),
+            (conversations.remove_user, settings.conversations_dir),
+        ):
+            if folder is None:
+                continue
+            try:
+                remover(folder, user["id"])
             except (OSError, ValueError):
                 traceback.print_exc()
         self._send_json(
@@ -898,6 +970,7 @@ class AgentHandler(BaseHTTPRequestHandler):
         proposal: dict[str, Any] | None = None
         clarify_raw: dict[str, Any] | None = None
         parts: list[str] = []
+        clean = ""
         user_text = history[-1]["content"] if history else ""
         profile = self._learn_style(user["id"], profile, user_text)
         if discuss_mode:
@@ -989,8 +1062,9 @@ class AgentHandler(BaseHTTPRequestHandler):
         else:
             # harness 已经边生成边推了 delta，这里再推一遍就会重复；
             # mock 走原来的 policy 过滤 + 回放。
+            clean = "".join(parts)
             if settings.mock:
-                self._emit_reply("".join(parts), user_text, draft_raw)
+                clean = self._emit_reply(clean, user_text, draft_raw) or clean
             wants_act = bool(pending_questions or discuss_rounds >= 2)
             if prefetched and not proposal and not clarify_raw:
                 proposal = prefetched
@@ -1038,6 +1112,9 @@ class AgentHandler(BaseHTTPRequestHandler):
                         )
                         memory["clarify_rounds"] = discuss_rounds + 1
                     self._save_memory(user["id"], memory)
+            self._capture_turn(
+                user["id"], memory, user_text, clean or "".join(parts)
+            )
             self._write_event("done", {})
             self._finish_stream()
 
@@ -1089,7 +1166,7 @@ class AgentHandler(BaseHTTPRequestHandler):
         raw: str,
         user_text: str,
         draft_raw: dict[str, Any] | None,
-    ) -> None:
+    ) -> str:
         """Filter the reply, then replay it — only clean text is streamed."""
         crisis = policy.detect_crisis(user_text)
         clean, violations = policy.apply(raw, crisis=crisis)
@@ -1109,8 +1186,40 @@ class AgentHandler(BaseHTTPRequestHandler):
 
         for chunk in policy.chunks(clean):
             if not self._write_event("delta", {"text": chunk}):
-                return
+                return clean
             time.sleep(REPLAY_DELAY)
+        return clean
+
+    def _capture_turn(
+        self,
+        user_id: str,
+        memory: dict[str, Any] | None,
+        user_text: str,
+        reply: str,
+    ) -> None:
+        """Store the conversation text, scrubbed (docs/data-policy.md)."""
+        settings = self.server.settings
+        if not settings.capture_text or settings.conversations_dir is None:
+            return
+        session = str((memory or {}).get("session") or "chat")[:64]
+        try:
+            conversations.append(
+                settings.conversations_dir,
+                user_id,
+                session=session,
+                role="user",
+                text=user_text,
+            )
+            if reply:
+                conversations.append(
+                    settings.conversations_dir,
+                    user_id,
+                    session=session,
+                    role="assistant",
+                    text=reply,
+                )
+        except (OSError, ValueError):
+            traceback.print_exc()
 
     # ------------------------------------------------------------------
     # Scheduling profile
@@ -1308,7 +1417,104 @@ class AgentHandler(BaseHTTPRequestHandler):
             self.server.accounts.save_profile(user["id"], profile)
         except (AccountError, StorageError):
             traceback.print_exc()
+        self._record_proposal_event(user["id"], action, source, summary, count)
         self._send_json(HTTPStatus.OK, {"ok": True, "counts": counts})
+
+    def _record_proposal_event(
+        self, user_id: str, action: str, source: str, summary: str, count: int
+    ) -> None:
+        """L1: accepted / rejected / edited, for the modelling side."""
+        settings = self.server.settings
+        if settings.events_dir is None:
+            return
+        name = {
+            "accept": "proposal.accepted",
+            "dismiss": "proposal.rejected",
+            "choose": "proposal.edited",
+        }.get(action)
+        if not name:
+            return
+        try:
+            events.append(
+                settings.events_dir,
+                user_id,
+                name,
+                {"source": source, "summary": summary, "changes": count},
+            )
+        except (OSError, ValueError):
+            traceback.print_exc()
+
+    def _handle_event(self) -> None:
+        """Frontend hooks for events the state diff cannot see."""
+        user = self._agent_user()
+        if user is None:
+            return
+        settings = self.server.settings
+        if settings.events_dir is None:
+            self._send_json(HTTPStatus.OK, {"ok": True, "recorded": False})
+            return
+        try:
+            payload = self._read_json()
+        except BadRequest as error:
+            self._send_json(HTTPStatus.BAD_REQUEST, {"error": str(error)})
+            return
+        name = str(payload.get("name") or "").strip()
+        body = payload.get("payload")
+        record = events.append(
+            settings.events_dir,
+            user["id"],
+            name,
+            body if isinstance(body, dict) else None,
+        )
+        if record is None:
+            self._send_json(
+                HTTPStatus.BAD_REQUEST, {"error": "未知或不合格的事件"}
+            )
+            return
+        self._send_json(HTTPStatus.OK, {"ok": True, "recorded": True})
+
+    def _handle_export(self) -> None:
+        """Everything stored for this account, as one zip (data policy §2)."""
+        user = self._current_user()
+        settings = self.server.settings
+        data, _ = self.server.accounts.load_data(user["id"])
+        profile = self.server.accounts.load_profile(user["id"]) or {}
+        memory = self.server.accounts.load_memory(user["id"]) or {}
+        buffer = io.BytesIO()
+        with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as archive:
+            archive.writestr(
+                "data.json",
+                json.dumps(data or {}, ensure_ascii=False, indent=2),
+            )
+            archive.writestr(
+                "profile.json",
+                json.dumps(profile, ensure_ascii=False, indent=2),
+            )
+            archive.writestr(
+                "memory.json",
+                json.dumps(memory, ensure_ascii=False, indent=2),
+            )
+            if settings.events_dir is not None:
+                archive.writestr(
+                    "events.jsonl",
+                    "\n".join(
+                        events.export_lines(settings.events_dir, user["id"])
+                    ),
+                )
+            if settings.conversations_dir is not None:
+                archive.writestr(
+                    "conversations.jsonl",
+                    "\n".join(
+                        conversations.export_lines(
+                            settings.conversations_dir, user["id"]
+                        )
+                    ),
+                )
+        self._send_bytes(
+            buffer.getvalue(),
+            "application/zip",
+            filename=f"morrow-{user['id']}.zip",
+        )
 
     def _handle_profile(self) -> None:
         user = self._agent_user()
@@ -1719,6 +1925,26 @@ def main(argv: list[str] | None = None) -> int:
         print(
             f"[agent] 快照归档：{settings.snapshot_dir}"
             f"（保留 {settings.snapshot_days} 天，启动清理 {pruned} 个文件）"
+        )
+    if settings.events_dir is not None:
+        try:
+            gone = events.prune(
+                settings.events_dir, retention_days=settings.collect_days
+            )
+        except OSError:
+            gone = 0
+        print(f"[agent] 事件日志：{settings.events_dir}（保留 {settings.collect_days} 天，清理 {gone}）")
+    if settings.capture_text and settings.conversations_dir is not None:
+        try:
+            gone = conversations.prune(
+                settings.conversations_dir,
+                retention_days=settings.collect_days,
+            )
+        except OSError:
+            gone = 0
+        print(
+            f"[agent] 对话原文：{settings.conversations_dir}"
+            f"（保留 {settings.collect_days} 天，清理 {gone}）"
         )
     print(
         "[agent] 注册："

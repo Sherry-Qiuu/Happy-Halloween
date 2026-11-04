@@ -109,6 +109,12 @@ class Settings:
     snapshot_dir: Path | None = None  # defaults to <data_dir>/snapshots
     snapshot_days: int = 90  # retention, pruned on start
 
+    # L1/L2: product events, and raw conversation text (docs/data-policy.md).
+    events_dir: Path | None = None
+    conversations_dir: Path | None = None
+    capture_text: bool = True
+    collect_days: int = 90
+
     # Email verification (registration and password reset). The SMTP
     # password is a QQ Mail "授权码", never the mailbox login password.
     mail_transport: str = "smtp"
@@ -223,6 +229,16 @@ def load_settings(env_file: Path | None = None) -> Settings:
             os.environ.get("MORROW_SNAPSHOT_DIR", str(data_dir / "snapshots"))
         ).resolve(),
         snapshot_days=_as_int("MORROW_SNAPSHOT_DAYS", 90),
+        events_dir=Path(
+            os.environ.get("MORROW_EVENTS_DIR", str(data_dir / "events"))
+        ).resolve(),
+        conversations_dir=Path(
+            os.environ.get(
+                "MORROW_CONVERSATIONS_DIR", str(data_dir / "conversations")
+            )
+        ).resolve(),
+        capture_text=_as_bool("MORROW_CAPTURE_TEXT", True),
+        collect_days=_as_int("MORROW_COLLECT_DAYS", 90),
         session_days=_as_int("MORROW_SESSION_DAYS", 7),
         cookie_secure=_as_bool("COOKIE_SECURE"),
         allow_registration=_as_bool("MORROW_ALLOW_REGISTRATION", True),
