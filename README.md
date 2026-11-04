@@ -6,7 +6,7 @@
 ![python](https://img.shields.io/badge/python-3.10%2B-3776AB)
 ![runtime deps](https://img.shields.io/badge/runtime_deps-0-brightgreen)
 ![build](https://img.shields.io/badge/build_none-6b5bfa)
-![tests](https://img.shields.io/badge/tests-147_passed-brightgreen)
+![tests](https://img.shields.io/badge/tests-157_passed-brightgreen)
 
 **在线演示**（GitHub Pages 从 `main` 发布；本地演示模式，数据只留在浏览器）：<https://sherry-qiuu.github.io/Happy-Halloween/>
 
@@ -37,7 +37,7 @@ Morrow 的立场是三条：
 | 不做 | 原因 |
 | --- | --- |
 | 跨月全局最优排程 | 只搜 7 天 × 96 个刻钟格 × 最多 3 个受影响事件（约 2000 次比较），换来 p95 < 2 ms 与可解释 |
-| 让 AI 静默改承诺 | 6 种动作白名单 + 单轮 ≤ 4 条 + `quote` 必须是用户原话的子串 |
+| 让 AI 静默改承诺 | 7 种动作白名单 + 单轮 ≤ 12 条 + `quote` 必须是用户原话的子串 |
 | 改任务、目标、主动性 | 画像只改块长 / 时段 / 缓冲 / 留白 / 措辞，`proactive` 写死 `L1` |
 | 自动替用户发通知 | 只起草通知草稿，发送权在用户；未发的记成 `bill.notifications` |
 | 当心理医生 | 命中自伤表述时整段替换为固定安全文案，不走正向框架 |
@@ -67,7 +67,7 @@ Morrow 的立场是三条：
 
 ## 现在能做什么
 
-- **今天**：待办卡 + 3 天「计划 / 实际」双视图；拖时间块移动、拖上下边缘改时长，15 分钟吸附
+- **今天**：待办卡 + 3 天「计划 / 实际」双视图；拖时间块移动、拖上下边缘改时长，5 分钟吸附
 - **冲突不是红条，是账单**：改动数、目标影响、他人承诺风险、通知数、留白余量，逐项列出
 - **项目**：目标、里程碑、SVG 依赖甘特图、循环依赖检查，列表页与详情页两种密度
 - **日反思 / 周反思**：先记事实再写想法；周报由 `/api/agent/report` 生成，模板与标签可自定义
@@ -108,7 +108,7 @@ GitHub Pages 从 `main` 自动发布同一份静态文件（`.github/workflows/p
 | ① 研究 | [`docs/research/`](docs/research/) | 需求全景、画像类型学、冷启动报告 | 文档 |
 | ② 模拟 | [`docs/research/sim/`](docs/research/sim/) | 28 天日历压力模拟，纯标准库可复现 | 在 `docs/research/` 下跑 `python sim/calendar_stress.py` |
 | ③ 策略设计 | [`calendar-rescheduler/`](calendar-rescheduler/) | 重排内核 + 交互 Demo + [`STRATEGY.md`](calendar-rescheduler/backend/STRATEGY.md) | 在 `calendar-rescheduler/` 下跑 `python backend/core.py` |
-| ④ 产品 | [`morrow-agent/`](morrow-agent/) | 前端 19 个脚本 + 后端 11 个模块 | `python server.py` |
+| ④ 产品 | [`morrow-agent/`](morrow-agent/) | 前端 27 个脚本 + 后端 18 个模块 | `python server.py` |
 | ⑤ 部署 | [`morrow-agent/deploy/`](morrow-agent/deploy/) | 一键脚本、Caddy、nginx、systemd、备份 | `sudo bash deploy/bootstrap.sh <域名>` |
 | ⑥ 发布 | [`.github/workflows/pages.yml`](.github/workflows/pages.yml) | 推送 `main` 即发布静态站点 | 自动 |
 | ⑦ PRD | [`docs/prd/`](docs/prd/) | AI 目标陪练闭环的界面级需求与验收 | 文档 |
@@ -135,13 +135,13 @@ GitHub Pages 从 `main` 自动发布同一份静态文件（`.github/workflows/p
 
 ## 架构 · 前端（无框架、无构建）
 
-只有一个 HTML，19 个脚本共用同一个全局作用域，靠**加载顺序**和**逐层覆写**搭出 11 个增量层。没有打包器，没有 `import`。
+只有一个 HTML，27 个脚本共用同一个全局作用域，靠**加载顺序**和**逐层覆写**搭出十几层增量脚本。没有打包器，没有 `import`。
 
 | 层 | 文件 | 作用 |
 | --- | --- | --- |
 | 入口 | `web/index.html` | 唯一 HTML；静态托管与 Pages 共用这一份 |
-| 基础壳 | 内联 `<style>` + 13 张分层样式 | 侧栏、顶栏、网格、弹窗的底稿 |
-| 11 个增量层 | `revision.*` `examples.*` `home.*` `info-card.*` `refine.*` `reflect-data.*` `home-clean.*` `project.*` `workspace.*` `sidebar.*` `unify.*` | 每层捕获上游函数再包一层，负责一个页面或一种编辑器 |
+| 基础壳 | 内联 `<style>` + 16 张样式表 | 侧栏、顶栏、网格、弹窗的底稿 |
+| 增量层 | `revision.*` `examples.*` `home.*` `info-card.*` `refine.*` `reflect-data.*` `home-clean.*` `project.*` `workspace.*` `sidebar.*` `unify.*` 共 11 层原型，外加 `ai-dock.*` `ai-observe.*` `calendar-range.*` `block-colors.*` `tag-colors.*` `today.*` `demo-seed.*` | 每层捕获上游函数再包一层，负责一个页面或一种编辑器 |
 | 皮肤 | `warmgrid-skin.css` | 暖纸底、墨色主操作、薰衣草 + 青柠强调；**只改样式不改布局** |
 | 外观 | `edge-theme.js` | 浅 / 深 / 系统、5 色、10 图主题；注入 `--edge-*` token 与右下角面板 |
 | AI | `agent.js` / `agent.css` | SSE 对话、方案卡、按账号隔离聊天记录 |
@@ -150,7 +150,7 @@ GitHub Pages 从 `main` 自动发布同一份静态文件（`.github/workflows/p
 | 语音 | `agent.js` 内置 | 浏览器 `SpeechRecognition` 中文转写，音频不上传 |
 | 桥接 | `app-bridge.js`、`pages-bootstrap.js` | 账号态桥接；Pages 上自动进本地演示 |
 
-`render` 的包裹链（外层先执行）：`auth.js` → `home-reschedule.js` → `unify.js` → `workspace.js` → `refine.js` → `home.js` → 内联原型。这就是为什么在设置页改账号名、在首页拖时间块、在方案卡里点「采用」，三者互不踩踏。
+`render` 的包裹链（外层先执行）：`home.js` → `refine.js` → `workspace.js` → `unify.js` 依次捕获上一层的 `render`，`auth.js`、`agent.js`、`ai-observe.js` 再在运行时包住 `window.render` 刷新账号态、AI 面板与观察数据。这就是为什么在设置页改账号名、在首页拖时间块、在方案卡里点「采用」，三者互不踩踏。
 
 ### 一次拖动发生了什么
 
@@ -161,31 +161,39 @@ GitHub Pages 从 `main` 自动发布同一份静态文件（`.github/workflows/p
 5. 方案卡只渲染在 `.hai-scroll`（首页的 AI 条），带账单、逐条改动、备选按钮和画像选择。
 6. 点「应用方案」才写回 `hs.blocks`；「保留原样」回到拖动前的位置；「撤销上次修改」用 `hundo` 整体回滚。
 
-对话里的「别动客户会」「缩短到 45 分钟」「换到明天下午」由 `parseConstraints()` 变成 `avoid / shorten / force / dayOffset / part` 再重算一次，不调模型。
+`planner.js` 接受 `avoid` / `prefer` / `shorten` / `dayOffset` / `part` / `force` 这组约束；目前 `home-reschedule.js` 传进去的是默认空值，对话里「别动客户会」这类句子还没有解析回约束——这一层是路线图里的事。
 
 ### 数据与存储
 
 - 客户端状态是一个全局 `data`：`tasks`、`goals`（含里程碑、`projectTasks`、依赖边）、`reviews`、`extra`、`schedule`；首页另有 `hs`（`blocks` + `actual`）。
 - 存储键：`morrow-v02:<userId>`（账号数据）、`morrow-home-v05`、`morrow-workspace-v11`、`morrow-agent-chats-v1:<scope>`、`edge-fluent-appearance:v1`。
 - `save()` 先写 `localStorage`，再 `Morrow.queueSave()` 500 ms 防抖 `PUT /api/data`；失败时把改动存进 `morrow-pending:<scope>`，下次登录补传。
+- 服务端每次保存会把上一版归档成快照（`snapshots.py`：gzip JSONL、按天分文件、默认保留 90 天，删号时一并清除）。
 - 已知问题：`data.schedule`（Agent 视图）与 `hs.blocks`（首页视图）是两套并行日历存储，极端情况下会不一致；见[已知边界](#已知边界)。
 
 ## 架构 · 后端（纯标准库）
 
-11 个模块，没有 web 框架、没有 ORM、没有第三方包。`ThreadingHTTPServer` 一线程一连接，SSE 手写，静态文件与 API 共用一个端口。
+18 个模块，没有 web 框架、没有 ORM、没有第三方包。`ThreadingHTTPServer` 一线程一连接，SSE 手写，静态文件与 API 共用一个端口。
 
 | 模块 | 行数 | 职责 |
 | --- | --- | --- |
-| `server.py` | 1233 | 路由、静态托管、CORS / 同源校验、限流、SSE、错误归一 |
-| `accounts.py` | 842 | 账号、会话、PBKDF2、按用户数据文件、审计日志 |
-| `sched_profile.py` | 1046 | 排布画像：后验、漂移、姿态、写入校验、参数折算 |
-| `policy.py` | 281 | 输出策略：危机 / 事实 / 语气三层裁决 |
-| `deepseek.py` | 263 | 流式客户端 + 正文 / 提案分离器 |
-| `config.py` | 233 | `.env` / 环境变量，冻结的 `Settings` |
+| `server.py` | 1771 | 路由、静态托管、CORS / 同源校验、限流、SSE、错误归一 |
+| `sched_profile.py` | 1046 | 显式画像：后验、漂移、姿态、写入校验、参数折算 |
+| `accounts.py` | 887 | 账号、会话、PBKDF2、按用户数据文件、审计日志 |
+| `harness.py` | 507 | 单轮工具循环：模型 → 工具 → 模型，带上限与失败兜底 |
+| `policy.py` | 417 | 输出策略：危机 / 事实 / 语气三层裁决 + 口语上限 |
+| `tools.py` | 406 | 模型可调用的确定性工具，只读状态文档、不碰存储 |
+| `protocol.py` | 314 | SSE 编码 + 7 种动作白名单校验 |
+| `deepseek.py` | 285 | 流式客户端 + 正文 / 提案分离器 |
+| `config.py` | 256 | `.env` / 环境变量，冻结的 `Settings` |
+| `prompts.py` | 248 | 系统提示词 + 应用状态序列化 |
+| `conversation_memory.py` | 230 | 按用户存的长期对话记忆，跨设备与重载 |
 | `mailer.py` | 227 | QQ Mail SMTP 发信 + 控制台验证码模式 |
-| `protocol.py` | 217 | SSE 编码 + 6 种动作白名单校验 |
 | `verification.py` | 209 | 6 位验证码：哈希存储、TTL、重发间隔、尝试上限 |
-| `prompts.py` | 139 | 系统提示词 + 应用状态序列化 |
+| `portrait.py` | 204 | 行为推断画像：从真实时间块 / 待办 / 目标里量出来的 |
+| `snapshots.py` | 196 | 每次保存归档一份 L0 快照，供后续训练与回放 |
+| `deepseek_tools.py` | 105 | OpenAI 风格 tool calls 的流式补全 |
+| `backend_services.py` | 91 | `decompose` / `replan` / `reflection`，复用重排内核 |
 | `mock_agent.py` | 85 | 离线示例回复 |
 
 ### 一次对话的服务端管线
@@ -193,10 +201,11 @@ GitHub Pages 从 `main` 自动发布同一份静态文件（`.github/workflows/p
 ```text
 浏览器 POST /api/agent/chat
   → 同源校验 + 会话 + 每用户限流（40 次/分钟）
-  → prompts.chat_messages()：系统提示 + <persona> 参数 + <state> 快照
-  → deepseek.py 流式读上游
+  → 服务端加载：显式画像 + 行为画像（portrait）+ 长期对话记忆
+  → prompts.chat_messages()：系统提示 + <persona> 参数 + <state> 快照 + 记忆摘要
+  → harness.run_turn()：模型 ↔ 工具循环（查空档、算代价），带 prefetched 兜底
   → ProposalSplitter 把正文与提案块分开，提案块必须先闭合才认
-  → protocol.sanitize_changes()：白名单、值域、去重、单轮 ≤ 4 条
+  → protocol.sanitize_changes()：白名单、值域、去重、单轮 ≤ 12 条
   → sched_profile.advance()：校验 quote 是原话子串，通过才写入画像（下一轮生效）
   → policy.apply()：危机 → 事实 → 语气；正文压到 3 句
   → 以 4 字 / 12 ms 的节奏回放为 SSE：delta* → proposal → done
@@ -208,7 +217,7 @@ GitHub Pages 从 `main` 自动发布同一份静态文件（`.github/workflows/p
 - **画像、草稿不出服务端**。`persona` 与 `draft` 事件只被服务端消费，不转发浏览器（`draft.predicted` 是模型的自我押注，不该给用户看）。
 - **模型的话不能当数据**。画像只接收校验通过的增量；用户没说过的话，`quote` 对不上就被丢。
 
-这条链路的硬约束（9 条）、上下文与延迟预算、降级矩阵和评测门槛，写在 [AI 运行规范](docs/ai-runtime-spec.md) 里；`scripts/ai_eval.py` 是可以跑的版本。
+这条链路的硬约束（9 条）、上下文与延迟预算、降级矩阵和评测门槛，写在 [AI 运行规范](docs/ai-runtime-spec.md) 里；`scripts/ai_eval.py` 是照着这份规范写的离线评测（当前跑不通，见「测试」）。
 
 ## 重排内核（calendar-rescheduler）
 
@@ -271,6 +280,7 @@ GitHub Pages 从 `main` 自动发布同一份静态文件（`.github/workflows/p
 | 正文 ≤ 3 句 | 截断；反思报告传 `max_sentences=None` 不受限 |
 | 想一套说一套 | `draft.predicted / risk` 只落日志，永不出现在正文 |
 | 事实不可省略 | 草稿承诺的数字没出现，补一行中性「记录：…」，不改写原句 |
+| 口语上限 | 可以跟着用户的口吻走，但语气词超比例会削、网感 / 黑话 / 公文体按词表修剪 |
 | 危机例外 | 命中自伤表述，整段替换为固定安全文案 |
 
 优先级固定为 **危机 > 事实 > 语气**，任何冲突按这个顺序裁决。代价写在代码注释里：正文先缓冲、过策略、再回放，所以慢，但浏览器里不会出现违规句子。
@@ -294,8 +304,15 @@ GitHub Pages 从 `main` 自动发布同一份静态文件（`.github/workflows/p
 | DELETE | `/api/account` | `{password}`，删号并删数据 |
 | GET / PUT | `/api/data` | 每账号一份文档，512 KB 上限 |
 | GET | `/api/agent/health` · `/api/agent/config` | `{configured, model, mock}` |
+| GET | `/api/agent/history` | 服务端长期记忆：场次、轮数、笔记 |
+| GET | `/api/agent/profile` | 画像：`derived` / `slots` / `indicators` / `params` / `prompt` |
 | POST | `/api/agent/chat` | **SSE**：`delta*` → `proposal` → `done` |
 | POST | `/api/agent/report` | `{report}`，周报正文 |
+| POST | `/api/agent/observe` | 为一天 / 一周生成结构化观察 |
+| POST | `/api/agent/decompose` | 目标拆解成步骤（规则版，不调模型） |
+| POST | `/api/agent/replan` | 重排：直接调用 `calendar-rescheduler` 内核 |
+| POST | `/api/agent/reflection` | 反思 / 周报的结构化数据 |
+| POST | `/api/agent/feedback` | `accept` / `dismiss` / `choose`，回流给行为画像 |
 
 ## 配置
 
@@ -307,28 +324,28 @@ GitHub Pages 从 `main` 自动发布同一份静态文件（`.github/workflows/p
 | AI | `DEEPSEEK_API_KEY` / `DEEPSEEK_MODEL` / `AGENT_MOCK` / `AGENT_RATE_LIMIT` | 空 / 见 `.env.example` / `0` / `40` |
 | 验证码 | `EMAIL_CODE_TTL` / `EMAIL_CODE_RESEND` / `EMAIL_CODE_MAX_ATTEMPTS` | `600` / `60` / `5` |
 
-完整 30 项与环境变量优先级见 [`morrow-agent/.env.example`](morrow-agent/.env.example) 与 [`morrow-agent/README.md`](morrow-agent/README.md)。本地想跳过邮箱验证：`MORROW_REQUIRE_EMAIL=0`；想不发信只看验证码：`MAIL_TRANSPORT=console`，验证码会打印在启动终端。
+完整 31 项与环境变量优先级见 [`morrow-agent/.env.example`](morrow-agent/.env.example) 与 [`morrow-agent/README.md`](morrow-agent/README.md)。本地想跳过邮箱验证：`MORROW_REQUIRE_EMAIL=0`；想不发信只看验证码：`MAIL_TRANSPORT=console`，验证码会打印在启动终端。
 
 ## 测试
 
 ```powershell
 cd morrow-agent
-python -m unittest discover -s tests   # 108 个后端测试
-python scripts/ai_eval.py              # 44 项 AI 运行期用例 + 预算门槛
-node tests/dom_smoke.mjs               # 22 项 AI 面板前端链路
-node tests/auth_smoke.mjs              # 17 项登录 / 注册 / 找回链路
+python -m unittest discover -s tests   # 140 项后端测试
+cd ..\calendar-rescheduler\backend
+python -m unittest test_strategy       # 9 项策略测试
+cd ..\frontend
+node test_planner.js                   # 8 项前端内核测试
 ```
 
-后端覆盖账号存储、会话失效、改密踢下线、数据隔离、删号、跨站拒绝和 HTTP 全链路；前端冒烟测试不装 jsdom，而是用 DOM 桩在 `node:vm` 里跑真实 `agent.js` / `auth.js`，能挡住接线错误，但替代不了浏览器看样式。
+后端覆盖账号存储、会话失效、改密踢下线、数据隔离、删号、跨站拒绝、协议白名单、输出策略、画像校验和 HTTP 全链路。
 
-注意：后端测试默认要求邮箱验证开启。本机 `.env` 若写了 `MORROW_REQUIRE_EMAIL=0`，会有 9 项注册验证码相关测试失败，跑测试时覆盖成 `1` 即可（`$env:MORROW_REQUIRE_EMAIL='1'`）。
+注意：后端测试默认要求邮箱验证开启。本机 `.env` 若写了 `MORROW_REQUIRE_EMAIL=0`，注册验证码相关用例会失败，跑测试时覆盖成 `1` 即可（`$env:MORROW_REQUIRE_EMAIL='1'`）。
 
-重排包另有测试（9 项策略测试 + 8 项前端内核测试）：
+三个测试脚本还没跟上最近的接口重构，当前跑不通，先别当回归门槛用：
 
-```bash
-cd calendar-rescheduler/backend && python -m unittest -v test_strategy
-cd calendar-rescheduler/frontend && node test_planner.js
-```
+- `tests/dom_smoke.mjs`：VM 桩里没有 `xjShift`，内联脚本已改成依赖 `today.js`。
+- `tests/auth_smoke.mjs`：`Morrow` 没挂到沙箱里，后半段直接抛 `TypeError`。
+- `scripts/ai_eval.py`：`deepseek.parse_turn` 的返回值从 3 个变成 4 个，预算用例解包失败。
 
 ## 部署
 
@@ -344,7 +361,7 @@ cd calendar-rescheduler/frontend && node test_planner.js
 上线前必看的三条：`COOKIE_SECURE=1`（HTTPS 下，否则浏览器不存 cookie）、`MORROW_TRUST_PROXY=1`（反代后限流才拿得到真实 IP）、建好账号后 `MORROW_ALLOW_REGISTRATION=0`。部署后从任意机器验收：
 
 ```bash
-python scripts/verify_deploy.py <域名>   # DNS → TLS → 登录页 → API，9 项检查
+python scripts/verify_deploy.py <域名>   # DNS → TCP → TLS → 登录页 → API
 ```
 
 SSE 必须关掉反代缓冲（Caddy 的 `flush_interval -1`、nginx 的 `proxy_buffering off`），否则 AI 回复会一次性吐出来。
@@ -354,9 +371,9 @@ SSE 必须关掉反代缓冲（Caddy 的 `flush_interval -1`、nginx 的 `proxy_
 ```text
 Happy-Halloween/
 ├─ morrow-agent/              产品本体：前端 + Python 服务 + 部署
-│  ├─ web/                      唯一前端入口与 19 个脚本
+│  ├─ web/                      唯一前端入口与 27 个脚本
 │  ├─ docs/profile-rules.md     画像与 Agent 行为规则（P-0…P-10）
-│  ├─ tests/                    108 个后端测试 + 2 个 DOM 冒烟测试
+│  ├─ tests/                    140 个后端测试 + 2 个 DOM 冒烟脚本
 │  ├─ scripts/                  验 key、画像演示、部署验收
 │  └─ deploy/                   bootstrap / Caddy / nginx / systemd / 备份 / DNS
 ├─ calendar-rescheduler/        重排策略包（独立可评审）
@@ -374,10 +391,10 @@ Happy-Halloween/
 - **后写覆盖**。同一账号两个标签页同时改，后保存的覆盖先保存的，不做字段级合并。
 - **Agent 聊天记录只在浏览器**，按账号分 key，不跨设备同步；计划与反思数据才在服务端。
 - **两份日历存储并行**（`data.schedule` 与 `hs.blocks`），首页与 Agent 视图极端情况下会不一致。
-- **后端重排还没接**。`/api/agent/replan` 只在设计里，`server.py` 目前没有这个路由；重排现在完全跑在客户端 `planner.js`。
+- **重排有两份实现**。客户端 `planner.js` 给拖拽出即时方案，`/api/agent/replan` 调 `calendar-rescheduler` 内核；两边独立演化，同一场景不一定给出同一个方案。
 - **P1–P8 只是投影**。代码里是八个可算指标，类型标签只用于沟通，不进界面也不进提示词。
-- **前端没有自动化测试**，只有两个 DOM 冒烟；样式与布局仍靠人眼。
-- **11 个增量层是技术债**。逐层覆写换来了「不推翻原型也能重做界面」，代价是同一页面可能有三处样式在抢。
+- **前端没有自动化测试**，两个 DOM 冒烟目前也跑不通；样式与布局仍靠人眼。
+- **增量层是技术债**。逐层覆写换来了「不推翻原型也能重做界面」，代价是同一页面可能有三处样式在抢。
 
 ## 路线图
 
@@ -386,7 +403,7 @@ Happy-Halloween/
 1. **账本**：影响账单（已有 `bill`）→ 通知债徽标 → 计划债务台账
 2. **刹车**：稳定模式（本周不再自动动）→ 恢复模式（生病后做减法）→ 确认预算
 3. **优化**：硬度体检、并行折算校准，排在最后
-4. **工程**：`POST /api/agent/replan` 把重排搬到服务端、画像引导组件接入首页、前端分层收敛、存储换数据库
+4. **工程**：客户端 `planner.js` 收敛到服务端重排内核、画像引导组件接入首页、前端分层收敛、存储换数据库
 
 ## 文档
 
